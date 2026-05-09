@@ -4,9 +4,10 @@
   "description": "A high-performance manga reader with offline support.",
   "productName": "Inkflow",
   "main": "main.js",
-  "author": "Inkflow Team",
+  "author": "Zigby",
   "license": "MIT",
   "scripts": {
+    "run": "electron .",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make"
@@ -22,7 +23,7 @@
         {
           "name": "@electron-forge/maker-squirrel",
           "config": {
-            "authors": "Inkflow Team",
+            "authors": "Zigby",
             "description": "A high-performance manga reader with offline support.",
             "setupIcon": "assets/logo.ico",
             "loadingGif": "assets/installing.gif"
