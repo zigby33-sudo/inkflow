@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, autoUpdater, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -260,35 +261,58 @@ ipcMain.handle('settings-save', async (_, settings) => {
 });
 
 // ─── Auto Updater ─────────────────────────────────────────────────────────────
-const UPDATE_SERVER_URL = 'https://your-deployment-url.com/update'; // Replace with your actual update server
 
-if (app.isPackaged) {
-  const feedURL = `${UPDATE_SERVER_URL}/${process.platform}/${app.getVersion()}`;
-  try {
-    autoUpdater.setFeedURL({ url: feedURL });
-  } catch (e) {
-    console.error('Updater error:', e.message);
-  }
-}
+// Programmatically configure the update source for GitHub.
+// This replaces the need for a physical 'app-update.yml' file.
+autoUpdater.setFeedURL({
+  provider: 'github',
+  owner: 'Zigby',
+  repo: 'inkflow'
+});
+// Configure electron-updater
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.logger = console; // Optional: enables logging to main process stdout
 
-autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName) => {
+autoUpdater.on('update-available', () => {
+  win?.webContents.send('update-status', 'Update found! Downloading in background...');
+  win?.webContents.send('update-progress', 0);
+});
+
+autoUpdater.on('update-not-available', () => {
+  win?.webContents.send('update-status', 'Inkflow is up to date.');
+  win?.webContents.send('update-progress', null);
+});
+
+autoUpdater.on('error', (err) => {
+  win?.webContents.send('update-status', 'Update error: ' + err.message);
+  win?.webContents.send('update-progress', null);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  const msg = `Downloading: ${Math.round(progressObj.percent)}%`;
+  win?.webContents.send('update-status', msg);
+  win?.webContents.send('update-progress', progressObj.percent);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  win?.webContents.send('update-progress', 100);
   const dialogOpts = {
     type: 'info',
     buttons: ['Restart', 'Later'],
     title: 'Application Update',
-    message: process.platform === 'win32' ? releaseNotes : releaseName,
-    detail: 'A new version has been downloaded. Restart the application to apply the updates.'
+    message: `Version ${info.version} is ready!`,
+    detail: 'A new version has been downloaded. Restart the application to apply the updates now.'
   };
 
   dialog.showMessageBox(dialogOpts).then((returnValue) => {
-    if (returnValue.response === 0) autoUpdater.quitAndInstall();
+    if (returnValue.response === 0) autoUpdater.quitAndInstall(false, true);
   });
 });
 
 ipcMain.handle('check-for-updates', () => {
-  if (!app.isPackaged) return 'Update check ignored in development.';
-  autoUpdater.checkForUpdates();
-  return 'Checking for updates...';
+  autoUpdater.checkForUpdatesAndNotify();
+  return 'Update check initiated...';
 });
 
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
@@ -300,7 +324,6 @@ function createWindow() {
     width: 1280, height: 820,
     minWidth: 900, minHeight: 600,
     show: false,
-    backgroundColor: '#00000000', // Transparent for mica/vibrancy
     backgroundColor: '#00000000', // Keeps it transparent for mica
     transparent: process.platform !== 'linux',
     frame: false, // Make window frameless

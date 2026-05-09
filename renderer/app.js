@@ -20,6 +20,7 @@ const S = {
   activeSource: 'mangadex',
   homeSort: 'followedCount',
   homeOffset: 0,
+  updateProgress: null,
 };
 
 // ── Init ──────────────────────────────────────────────────────────
@@ -149,13 +150,31 @@ async function init() {
     }
   });
 
+  // Handle background update notifications
+  api.onUpdateStatus((msg) => showToast(msg));
+
+  api.onUpdateProgress((pct) => {
+    S.updateProgress = pct;
+    const wrap = document.getElementById('updateProgressWrap');
+    if (wrap) {
+      wrap.style.display = (pct !== null && pct < 100) ? 'block' : 'none';
+      const fill = document.getElementById('updateProgressFill');
+      const label = document.getElementById('updateProgressLabel');
+      if (fill) fill.style.width = Math.round(pct || 0) + '%';
+      if (label) label.textContent = `Downloading update: ${Math.round(pct || 0)}%`;
+    }
+  });
+
   // Version check for What's New popup
-  const currentVersion = '1.1.0';
+  const currentVersion = '1.2.0';
   if (S.db.settings.lastVersion !== currentVersion) {
     setTimeout(() => showWhatsNew(currentVersion), 1000); // Small delay for better UX
     S.db.settings.lastVersion = currentVersion;
     api.dbSave(S.db);
   }
+
+  // Auto-check for updates on startup
+  api.checkForUpdates();
 
   navigate('home');
 }
@@ -381,7 +400,7 @@ async function renderSettings(main) {
 
   main.innerHTML = `
     <div class="settings-container">
-      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.1.0 STABLE</span></div>
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.2.0 STABLE</span></div>
 
       <div class="settings-group">
         <div class="settings-group-title">Content Sources</div>
@@ -429,8 +448,19 @@ async function renderSettings(main) {
           <div class="settings-info">
             <div class="settings-name">Software Updates</div>
             <div class="settings-desc">Keep Inkflow up to date with the latest features.</div>
+            <div id="updateProgressWrap" style="display:none; margin-top:10px; width:100%;">
+              <div class="progress-bar" style="height:4px; background:var(--bg3);"><div id="updateProgressFill" class="progress-fill" style="width:0%; background:var(--accent);"></div></div>
+              <div id="updateProgressLabel" style="font-size:10px; color:var(--text2); margin-top:4px;">Downloading update...</div>
+            </div>
           </div>
           <button class="btn btn-primary" id="checkUpdateBtn">Check for Updates</button>
+        </div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Version History</div>
+            <div class="settings-desc">See what changed in the latest update.</div>
+          </div>
+          <button class="btn btn-ghost" id="viewChangelogBtn">View Changelog</button>
         </div>
         <div class="settings-row">
           <div class="settings-info">
@@ -492,6 +522,20 @@ async function renderSettings(main) {
     S.db.settings.imageQuality = e.target.value;
     await api.settingsSave(S.db.settings);
     showToast('Image quality preference saved');
+  });
+
+  // If an update was already downloading when we opened Settings, show the bar
+  if (S.updateProgress !== null && S.updateProgress < 100) {
+    const wrap = document.getElementById('updateProgressWrap');
+    if (wrap) {
+      wrap.style.display = 'block';
+      document.getElementById('updateProgressFill').style.width = Math.round(S.updateProgress) + '%';
+      document.getElementById('updateProgressLabel').textContent = `Downloading update: ${Math.round(S.updateProgress)}%`;
+    }
+  }
+
+  document.getElementById('viewChangelogBtn')?.addEventListener('click', () => {
+    showWhatsNew('1.2.0');
   });
 
   document.getElementById('checkUpdateBtn')?.addEventListener('click', async () => {
@@ -2013,31 +2057,31 @@ function showWhatsNew(version) {
       
       <ul style="list-style:none; padding:0; margin:0 0 32px 0; display:flex; flex-direction:column; gap:16px;">
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">✨</span>
+          <span style="font-size:20px;">☁️</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Discovery Overhaul</div>
-            <div style="font-size:12px; color:var(--text2);">Sort the home screen by Popularity, Rating, or Updates. We've added pagination to show 100+ titles!</div>
+            <div style="font-weight:bold; font-size:14px;">GitHub Integration</div>
+            <div style="font-size:12px; color:var(--text2);">Inkflow now fetches updates directly from GitHub for better reliability.</div>
+          </div>
+        </li>
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">📈</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Live Update Progress</div>
+            <div style="font-size:12px; color:var(--text2);">See exactly how much of an update is downloaded with the new Settings progress bar.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
           <span style="font-size:20px;">📖</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Reader UI Polish</div>
-            <div style="font-size:12px; color:var(--text2);">The sidebar is now more compact and handles long chapter titles gracefully.</div>
+            <div style="font-weight:bold; font-size:14px;">Reader Refinements</div>
+            <div style="font-size:12px; color:var(--text2);">Adjusted sidebar layouts and improved text wrapping for a cleaner look.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🛡️</span>
+          <span style="font-size:20px;">🧹</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Source Stability</div>
-            <div style="font-size:12px; color:var(--text2);">Consolidated core sources for a more reliable reading experience without broken scrapers.</div>
-          </div>
-        </li>
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🚀</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Performance & Updates</div>
-            <div style="font-size:12px; color:var(--text2);">Infrastructure for auto-updates and better installer branding for a professional look.</div>
+            <div style="font-weight:bold; font-size:14px;">Cleanup</div>
+            <div style="font-size:12px; color:var(--text2);">Removed unstable legacy sources to focus on core performance and stability.</div>
           </div>
         </li>
       </ul>

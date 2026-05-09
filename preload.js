@@ -33,6 +33,16 @@ contextBridge.exposeInMainWorld('electron', {
   settingsGet: () => ipcRenderer.invoke('settings-get'),
   settingsSave: (settings) => ipcRenderer.invoke('settings-save', settings),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  onUpdateStatus: (cb) => {
+    const listener = (_, msg) => cb(msg);
+    ipcRenderer.on('update-status', listener);
+    return () => ipcRenderer.removeListener('update-status', listener);
+  },
+  onUpdateProgress: (cb) => {
+    const listener = (_, data) => cb(data);
+    ipcRenderer.on('update-progress', listener);
+    return () => ipcRenderer.removeListener('update-progress', listener);
+  },
 
   // Window controls
   winMinimize: () => ipcRenderer.send('window-minimize'),
