@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -260,6 +260,15 @@ ipcMain.handle('settings-save', async (_, settings) => {
 
 ipcMain.handle('get-version', () => app.getVersion());
 
+ipcMain.handle('open-external', (_, url) => {
+  shell.openExternal(url);
+});
+
+// Triggered by the UI to show a custom confirmation for history/library clearing
+ipcMain.on('request-db-clear', () => {
+  win?.webContents.send('show-db-clear-confirmation');
+});
+
 // ─── Auto Updater ─────────────────────────────────────────────────────────────
 
 const GITHUB_OWNER = 'zigby33';
@@ -305,21 +314,15 @@ async function checkGitHubForUpdate(silent = false) {
       win?.webContents.send('update-status', `Update available: v${latestVersion}`);
       win?.webContents.send('update-progress', null);
 
-      const { response } = await dialog.showMessageBox(win, {
-        type: 'info',
-        buttons: ['Download Update', 'Later'],
-        defaultId: 0,
-        title: 'Update Available',
-        message: `Inkflow v${latestVersion} is available`,
-        detail: `You have v${currentVersion}. The new version is ready to download from GitHub.\n\nRelease notes:\n${(data.body || 'No notes provided.').slice(0, 400)}`,
+      win?.webContents.send('update-available', {
+        latest: latestVersion,
+        current: currentVersion,
+        url: data.html_url,
+        notes: (data.body || 'No notes provided.').slice(0, 400)
       });
 
       db.settings.notifiedUpdateVersion = latestVersion;
       saveDB(db);
-
-      if (response === 0) {
-        shell.openExternal(data.html_url);
-      }
     } else {
       console.log(`[Updater] Already up to date (v${currentVersion})`);
       if (!silent) {

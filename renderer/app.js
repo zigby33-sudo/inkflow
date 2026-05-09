@@ -414,17 +414,29 @@ function renderHistory(main) {
 
   // Clear history button
   const clearBtn = document.createElement('button');
+  clearBtn.id = 'clearHistoryBtn';
   clearBtn.className = 'btn btn-ghost';
   clearBtn.style.cssText = 'font-size:11px;margin-top:16px;';
   clearBtn.textContent = '✕ Clear History';
+
+  const doClearHistory = () => {
+    S.db.history = { recent: [], lastMangaId: null };
+    api.dbSave(S.db);
+    renderHistory(main);
+    showToast('History cleared');
+  };
+
   clearBtn.addEventListener('click', () => {
+    // window.confirm is patched by modals.js to show a custom modal.
+    // It returns false synchronously; modals.js fires inkflow:clearHistory on confirm.
     if (confirm('Clear all reading history?')) {
-      S.db.history = { recent: [], lastMangaId: null };
-      api.dbSave(S.db);
-      renderHistory(main);
-      showToast('History cleared');
+      doClearHistory();
     }
   });
+
+  // Fired by modals.js when the user confirms through the custom modal.
+  document.addEventListener('inkflow:clearHistory', doClearHistory);
+
   main.appendChild(clearBtn);
 }
 

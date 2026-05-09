@@ -43,6 +43,16 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('update-progress', listener);
     return () => ipcRenderer.removeListener('update-progress', listener);
   },
+  onUpdateAvailable: (cb) => {
+    const listener = (_, data) => cb(data);
+    ipcRenderer.on('update-available', listener);
+    return () => ipcRenderer.removeListener('update-available', listener);
+  },
+  onDbClearRequest: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('show-db-clear-confirmation', listener);
+    return () => ipcRenderer.removeListener('show-db-clear-confirmation', listener);
+  },
 
   winMinimize: () => ipcRenderer.send('window-minimize'),
   winMaximize: () => ipcRenderer.send('window-maximize'),
@@ -59,4 +69,6 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('theme-changed', listener);
     return () => ipcRenderer.removeListener('theme-changed', listener);
   },
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  requestDbClear: () => ipcRenderer.send('request-db-clear'),
 });
