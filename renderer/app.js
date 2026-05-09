@@ -22,12 +22,14 @@ const S = {
   homeOffset: 0,
   updateProgress: null,
   libSearch: '',
+  version: '',
 };
 
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
   S.db = await api.dbGet();
   S.downloads = await api.getDownloads();
+  S.version = await api.getVersion();
 
   // Apply high-quality system font stack
   applyFonts();
@@ -433,6 +435,7 @@ async function renderSettings(main) {
   main.innerHTML = `
     <div class="settings-container">
       <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.3.0 STABLE</span></div>
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v${S.version} STABLE</span></div>
 
       <div class="settings-group">
         <div class="settings-group-title">Appearance</div>
@@ -594,6 +597,7 @@ async function renderSettings(main) {
 
   document.getElementById('viewChangelogBtn')?.addEventListener('click', () => {
     showWhatsNew('1.3.0');
+    showWhatsNew(S.version);
   });
 
   document.getElementById('checkUpdateBtn')?.addEventListener('click', async () => {
