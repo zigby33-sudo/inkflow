@@ -17,6 +17,7 @@ const S = {
   homeOffset: 0,
   updateProgress: null,
   libSearch: '',
+  libSort: 'added',
   version: '',
 };
 
@@ -1425,6 +1426,7 @@ function renderLibrary(main) {
 
   const activeCat = S.libFilter || 'all';
   const libSearch = S.libSearch || '';
+  const activeSort = S.libSort || 'added';
 
   main.innerHTML = `
     <div class="section-title"><span class="ic">★</span> My Library</div>
@@ -1433,6 +1435,13 @@ function renderLibrary(main) {
         ${categories.map(c => `<button class="tab ${activeCat === c.id ? 'active' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}
       </div>
       <input type="text" id="libSearchInput" class="chapter-search-input" style="width:200px; margin:0; font-size:11px;" placeholder="Search your library..." value="${libSearch}">
+      <div style="display:flex; gap:10px; align-items:center;">
+        <select id="libSortSelect" class="reader-select" style="width:auto; font-size:11px; margin:0;">
+          <option value="added" ${activeSort === 'added' ? 'selected' : ''}>Recently Added</option>
+          <option value="alpha" ${activeSort === 'alpha' ? 'selected' : ''}>Alphabetical</option>
+        </select>
+        <input type="text" id="libSearchInput" class="chapter-search-input" style="width:180px; margin:0; font-size:11px;" placeholder="Search..." value="${libSearch}">
+      </div>
     </div>
     <div class="manga-grid" id="libGrid"></div>`;
 
@@ -1440,24 +1449,34 @@ function renderLibrary(main) {
     t.addEventListener('click', () => {
       S.libFilter = t.dataset.cat;
       const grid = document.getElementById('libGrid');
-      const filtered = performLibFilter(ids, S.libFilter, S.libSearch);
+      const filtered = performLibFilter(ids, S.libFilter, S.libSearch, S.libSort);
       renderLibGrid(grid, filtered);
       main.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === S.libFilter));
     });
   });
 
-  document.getElementById('libSearchInput')?.addEventListener('input', e => {
+  const libSearchInput = document.getElementById('libSearchInput');
+  if (libSearchInput) {
+    libSearchInput.addEventListener('input', e => {
     S.libSearch = e.target.value;
     const grid = document.getElementById('libGrid');
-    const filtered = performLibFilter(ids, S.libFilter || 'all', S.libSearch);
+      const filtered = performLibFilter(ids, S.libFilter || 'all', S.libSearch, S.libSort);
+    renderLibGrid(grid, filtered);
+  });
+  }
+
+  document.getElementById('libSortSelect')?.addEventListener('change', e => {
+    S.libSort = e.target.value;
+    const grid = document.getElementById('libGrid');
+    const filtered = performLibFilter(ids, S.libFilter || 'all', S.libSearch, S.libSort);
     renderLibGrid(grid, filtered);
   });
 
-  const filteredIds = performLibFilter(ids, activeCat, libSearch);
+  const filteredIds = performLibFilter(ids, activeCat, libSearch, activeSort);
   renderLibGrid(document.getElementById('libGrid'), filteredIds);
 }
 
-function performLibFilter(ids, category, search) {
+function performLibFilter(ids, category, search, sort = 'added') {
   let filtered = category === 'all' 
     ? ids 
     : ids.filter(id => S.db.library[id].malStatus === category);
@@ -1466,6 +1485,14 @@ function performLibFilter(ids, category, search) {
     const q = search.toLowerCase();
     filtered = filtered.filter(id => S.db.library[id].title.toLowerCase().includes(q));
   }
+
+  if (sort === 'alpha') {
+    filtered.sort((a, b) => S.db.library[a].title.localeCompare(S.db.library[b].title));
+  } else {
+    // Default: added (newest first)
+    filtered.sort((a, b) => (S.db.library[b].addedAt || 0) - (S.db.library[a].addedAt || 0));
+  }
+
   return filtered;
 }
 
@@ -2243,6 +2270,13 @@ function showWhatsNew(version) {
           <div>
             <div style="font-weight:bold; font-size:14px;">Open Downloads Folder</div>
             <div style="font-size:12px; color:var(--text2);">Jump straight to your saved chapter files from Settings.</div>
+          </div>
+        </li>
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">🗂️</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Library Sorting</div>
+            <div style="font-size:12px; color:var(--text2);">Sort your collection alphabetically or by date added.</div>
           </div>
         </li>
       </ul>
