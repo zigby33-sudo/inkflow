@@ -321,6 +321,12 @@ async function checkGitHubForUpdate(silent = false) {
     }
 
     if (semverGt(latestVersion, currentVersion)) {
+      const db = loadDB();
+      if (silent && db.settings.notifiedUpdateVersion === latestVersion) {
+        console.log(`[Updater] Already notified user about v${latestVersion}. Skipping prompt.`);
+        return;
+      }
+
       console.log(`[Updater] Update available: v${currentVersion} → v${latestVersion}`);
       win?.webContents.send('update-status', `Update available: v${latestVersion}`);
       win?.webContents.send('update-progress', null);
@@ -334,6 +340,10 @@ async function checkGitHubForUpdate(silent = false) {
         message: `Inkflow v${latestVersion} is available`,
         detail: `You have v${currentVersion}. The new version is ready to download from GitHub.\n\nRelease notes:\n${(data.body || 'No notes provided.').slice(0, 400)}`,
       });
+
+      // Store the version we notified about so the silent startup check doesn't repeat the prompt
+      db.settings.notifiedUpdateVersion = latestVersion;
+      saveDB(db);
 
       if (response === 0) {
         shell.openExternal(data.html_url);
