@@ -434,7 +434,6 @@ async function renderSettings(main) {
 
   main.innerHTML = `
     <div class="settings-container">
-      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.3.0 STABLE</span></div>
       <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v${S.version} STABLE</span></div>
 
       <div class="settings-group">
@@ -596,7 +595,6 @@ async function renderSettings(main) {
   }
 
   document.getElementById('viewChangelogBtn')?.addEventListener('click', () => {
-    showWhatsNew('1.3.0');
     showWhatsNew(S.version);
   });
 

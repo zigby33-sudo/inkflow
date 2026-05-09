@@ -260,6 +260,8 @@ ipcMain.handle('settings-save', async (_, settings) => {
   return true;
 });
 
+ipcMain.handle('get-version', () => app.getVersion());
+
 // ─── Auto Updater ─────────────────────────────────────────────────────────────
 
 // Programmatically configure the update source for GitHub.

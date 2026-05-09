@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electron', {
   dbSave: (db) => ipcRenderer.invoke('db-save', db),
   dbClear: () => ipcRenderer.invoke('db-clear'),
   settingsGet: () => ipcRenderer.invoke('settings-get'),
+  getVersion: () => ipcRenderer.invoke('get-version'),
   settingsSave: (settings) => ipcRenderer.invoke('settings-save', settings),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   onUpdateStatus: (cb) => {
