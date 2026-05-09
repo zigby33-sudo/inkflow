@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -26,7 +26,7 @@ if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true
 
 function loadDB() {
   try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); }
-  catch { return { library: {}, progress: {}, settings: {} }; }
+  catch { return { library: {}, progress: {}, history: { recent: [] }, settings: {} }; }
 }
 function saveDB(db) { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); }
 
@@ -35,7 +35,7 @@ async function nodeFetch(url, options = {}) {
   const response = await net.fetch(url, {
     method: options.method || 'GET',
     headers: {
-      'User-Agent': 'Inkflow/1.0 (Manga Reader)',
+      'User-Agent': 'Inkflow/1.4.0 (Manga Reader)',
       'Accept': 'application/json',
       ...options.headers
     },
@@ -94,6 +94,16 @@ ipcMain.handle('mplus-fetch', async (_, urlPath, params = {}) => {
 });
 
 // Comick API proxy
+ipcMain.handle('comick-fetch', async (_, urlPath, params) => {
+  const url = new URL('https://api.comick.fun' + urlPath);
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (Array.isArray(v)) v.forEach(vi => url.searchParams.append(k, vi));
+      else url.searchParams.set(k, String(v));
+    });
+  }
+  return apiGet(url.toString());
+});
 
 // ─── In-memory image cache (covers & pages, max ~150 entries) ────────────────
 const imageCache = new Map();
@@ -248,6 +258,12 @@ ipcMain.handle('clear-cache', async () => {
   return true;
 });
 
+ipcMain.handle('open-downloads-folder', async () => {
+  await fsp.mkdir(DOWNLOADS_DIR, { recursive: true });
+  const result = await shell.openPath(DOWNLOADS_DIR);
+  return result === '';
+});
+
 // DB operations (library + progress)
 ipcMain.handle('db-get', async () => await loadDB());
 ipcMain.handle('db-save', async (_, db) => { await saveDB(db); return true; });
@@ -267,42 +283,55 @@ ipcMain.handle('get-version', () => app.getVersion());
 function setupAutoUpdater() {
   // Programmatically configure the update source for GitHub.
   // This replaces the need for a physical 'app-update.yml' file.
+  const currentVersion = app.getVersion();
+  console.log(`[AutoUpdater] Current app version: ${currentVersion}`);
+  
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'zigby33-sudo',
     repo: 'inkflow'
   });
+  console.log(`[AutoUpdater] Checking releases at: https://github.com/zigby33-sudo/inkflow/releases`);
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.logger = console; // Optional: enables logging to main process stdout
 
-  autoUpdater.on('update-available', () => {
-    win?.webContents.send('update-status', 'Update found! Downloading in background...');
+  autoUpdater.on('update-available', (info) => {
+    console.log(`[AutoUpdater] Update available: v${info.version}`);
+    win?.webContents.send('update-status', `Update found! v${info.version} Downloading in background...`);
     win?.webContents.send('update-progress', 0);
   });
 
-  autoUpdater.on('update-not-available', () => {
+  autoUpdater.on('update-not-available', (info) => {
+    console.log(`[AutoUpdater] No updates available. Latest: v${info.version}`);
     win?.webContents.send('update-status', 'Inkflow is up to date.');
     win?.webContents.send('update-progress', null);
   });
 
   autoUpdater.on('error', (err) => {
-    console.error('Auto updater error:', err);
-    const message = (err?.message || '').includes('404')
-      ? 'No GitHub release found. Publish a release with the Squirrel update assets to enable updates.'
-      : 'Update error: ' + err.message;
+    console.error('[AutoUpdater] Error:', err);
+    let message = 'Update error: ' + err.message;
+    
+    if ((err?.message || '').includes('404') || (err?.message || '').includes('No published')) {
+      message = `No releases found for v${currentVersion}. Ensure a GitHub release tag matches your app version.`;
+    } else if ((err?.message || '').includes('ENOTFOUND') || (err?.message || '').includes('ETIMEDOUT')) {
+      message = 'Network error checking for updates. Check your connection.';
+    }
+    
     win?.webContents.send('update-status', message);
     win?.webContents.send('update-progress', null);
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
     const msg = `Downloading: ${Math.round(progressObj.percent)}%`;
+    console.log(`[AutoUpdater] ${msg}`);
     win?.webContents.send('update-status', msg);
     win?.webContents.send('update-progress', progressObj.percent);
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[AutoUpdater] Update downloaded: v${info.version}`);
     win?.webContents.send('update-progress', 100);
     const dialogOpts = {
       type: 'info',

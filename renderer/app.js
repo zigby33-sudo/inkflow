@@ -43,7 +43,8 @@ async function init() {
   const defaultSources = {
     mangadex: { enabled: true, name: 'MangaDex' },
     mal: { enabled: true, name: 'MyAnimeList' },
-    mangaplus: { enabled: true, name: 'MangaPlus' }
+    mangaplus: { enabled: true, name: 'MangaPlus' },
+    comick: { enabled: true, name: 'Comick' }
   };
 
   if (!S.db.settings.sources) {
@@ -51,7 +52,6 @@ async function init() {
   } else {
     let changed = false;
     if (!S.db.settings.sources.mangaplus) { S.db.settings.sources.mangaplus = { enabled: true, name: 'MangaPlus' }; changed = true; }
-    if (S.db.settings.sources.comick) { delete S.db.settings.sources.comick; changed = true; }
     for (const [id, meta] of Object.entries(defaultSources)) {
       if (!S.db.settings.sources[id]) {
         S.db.settings.sources[id] = meta;
@@ -102,7 +102,7 @@ async function init() {
   document.getElementById('readerHitboxRight').addEventListener('click', () => turnPage(1));
 
   document.getElementById('readingModeSelect').addEventListener('change', e => {
-    setReaderMode(e.target.value);
+    setReaderMode(e.target.value, true);
   });
   document.getElementById('pageWidthSelect').addEventListener('change', e => {
     const w = e.target.value === '9999' ? '100%' : e.target.value + 'px';
@@ -111,6 +111,18 @@ async function init() {
   });
   document.getElementById('readerDirectionSelect').addEventListener('change', e => {
     setReaderDirection(e.target.value);
+  });
+  document.getElementById('imageQualitySelect').addEventListener('change', e => {
+    readerState.imageQuality = e.target.value;
+    S.db.settings.imageQuality = e.target.value;
+    api.settingsSave(S.db.settings);
+    showToast(`Image quality: ${e.target.value === 'data-saver' ? 'Data Saver' : 'Original'}`);
+  });
+  document.getElementById('preloadSelect').addEventListener('change', e => {
+    readerState.preloadCount = Number(e.target.value);
+    S.db.settings.preloadPages = readerState.preloadCount;
+    api.settingsSave(S.db.settings);
+    showToast(`Preload pages: ${readerState.preloadCount}`);
   });
   document.getElementById('readerMangaTitle').addEventListener('click', closeReader);
   document.getElementById('reportChBtn').addEventListener('click', () => showToast('Thanks for the report!'));
@@ -175,7 +187,7 @@ async function init() {
   });
 
   // Version check for What's New popup
-  const currentVersion = '1.3.0';
+  const currentVersion = '1.4.0';
   if (S.db.settings.lastVersion !== currentVersion) {
     setTimeout(() => showWhatsNew(currentVersion), 1000); // Small delay for better UX
     S.db.settings.lastVersion = currentVersion;
@@ -313,29 +325,46 @@ async function loadOnlineChapterPages(pageUrls, readerPages, readerLoading, load
   loadingText.textContent = `Loading ${pageUrls.length} pages...`;
   if (loadingBar) loadingBar.style.width = '5%';
 
+  const quality = readerState.imageQuality || 'original';
+  const preloadCount = Math.max(0, Number(readerState.preloadCount || 3));
+  const isRTL = readerState.direction === 'rtl';
+  const loadIndexes = new Set([readerState.currentPage]);
+  let nextIndex = readerState.currentPage;
+  for (let i = 0; i < preloadCount; i += 1) {
+    nextIndex = isRTL ? nextIndex - 1 : nextIndex + 1;
+    if (nextIndex < 0 || nextIndex >= pageUrls.length) break;
+    loadIndexes.add(nextIndex);
+  }
+
+  const loadOrder = Array.from(loadIndexes).sort((a, b) => a - b);
   let loadedCount = 0;
   const unsubProgress = api.onBatchImageProgress(({ index, total }) => {
     loadedCount++;
     const pct = Math.round((loadedCount / total) * 100);
     if (loadingBar) loadingBar.style.width = pct + '%';
     loadingText.textContent = `Loading pages... ${loadedCount}/${total}`;
-    // Render first page as soon as available
-    if (index === readerState.currentPage) renderTargetPage(readerPages, readerLoading);
+    const pageIndex = loadOrder[index];
+    if (pageIndex === readerState.currentPage) renderTargetPage(readerPages, readerLoading);
   });
 
-  // Load current page immediately
-  api.fetchImage(pageUrls[readerState.currentPage]).then(data => {
-    readerState.pages[readerState.currentPage] = data;
-    readerState.loaded.add(readerState.currentPage);
-    if (readerState.mode === 'single') renderTargetPage(readerPages, readerLoading);
-  }).catch(() => {});
-
-  const results = await api.fetchImagesBatch(pageUrls, 5);
+  const results = await api.fetchImagesBatch(loadOrder.map(i => pageUrls[i]), 5);
   if (unsubProgress) unsubProgress();
-  results.forEach((data, i) => {
-    readerState.pages[i] = data;
-    if (data) readerState.loaded.add(i);
-  });
+
+  await Promise.all(results.map(async (data, idx) => {
+    const pageIndex = loadOrder[idx];
+    if (data) {
+      try {
+        readerState.pages[pageIndex] = quality === 'data-saver' ? await compressDataUrl(data) : data;
+      } catch (e) {
+        readerState.pages[pageIndex] = data;
+      }
+      readerState.loaded.add(pageIndex);
+    }
+  }));
+
+  if (readerState.loaded.has(readerState.currentPage) && readerState.mode === 'single') {
+    renderTargetPage(readerPages, readerLoading);
+  }
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────
@@ -497,6 +526,8 @@ async function renderSettings(main) {
           <div class="settings-info">
             <div class="settings-name">Software Updates</div>
             <div class="settings-desc">Keep Inkflow up to date with the latest features.</div>
+            <div style="font-size:11px; color:var(--text2); margin-top:8px; font-family:monospace;">Current version: <strong>${S.version}</strong></div>
+            <div style="font-size:10px; color:var(--text2); margin-top:4px; line-height:1.4;">⚠️ Release tags must match app version format (e.g., 1.4.0 or v1.4.0)</div>
             <div id="updateProgressWrap" style="display:none; margin-top:10px; width:100%;">
               <div class="progress-bar" style="height:4px; background:var(--bg3);"><div id="updateProgressFill" class="progress-fill" style="width:0%; background:var(--accent);"></div></div>
               <div id="updateProgressLabel" style="font-size:10px; color:var(--text2); margin-top:4px;">Downloading update...</div>
@@ -504,6 +535,7 @@ async function renderSettings(main) {
           </div>
           <button class="btn btn-primary" id="checkUpdateBtn">Check for Updates</button>
         </div>
+
         <div class="settings-row">
           <div class="settings-info">
             <div class="settings-name">Version History</div>
@@ -522,6 +554,7 @@ async function renderSettings(main) {
             <div class="settings-name">Downloads</div>
             <div class="settings-desc">${dlChapters} chapters (${totalPages} pages) saved.</div>
           </div>
+          <button class="btn btn-ghost" id="openDownloadsBtn">Open Folder</button>
         </div>
         <div class="settings-row">
           <div class="settings-info">
@@ -584,6 +617,11 @@ async function renderSettings(main) {
     showToast('Image quality preference saved');
   });
 
+  document.getElementById('openDownloadsBtn')?.addEventListener('click', async () => {
+    const success = await api.openDownloadsFolder();
+    showToast(success ? 'Downloads folder opened' : 'Unable to open downloads folder');
+  });
+
   // If an update was already downloading when we opened Settings, show the bar
   if (S.updateProgress !== null && S.updateProgress < 100) {
     const wrap = document.getElementById('updateProgressWrap');
@@ -614,6 +652,7 @@ function sourceDesc(id) {
     mangadex: 'The largest free manga platform. Browse, read, and download thousands of titles.',
     mal: 'MyAnimeList scores, rankings and metadata for manga detail pages.',
     mangaplus: 'Official publisher. Browse trending Shonen/Seinen series.',
+    comick: 'High-quality comic aggregator with wide library coverage.',
   };
   return descs[id] || '';
 }
@@ -1064,6 +1103,9 @@ async function doSearch(q) {
     if (sourceId === 'mangadex') {
       html += `<div class="section-title" style="font-size:12px; margin-top:20px;">MangaDex</div>
                <div class="manga-grid" id="srGridMD"></div>`;
+    } else if (sourceId === 'comick') {
+      html += `<div class="section-title" style="font-size:12px; margin-top:20px;">Comick</div>
+               <div class="manga-grid" id="srGridComick"></div>`;
     } else if (sourceId === 'mal') {
       html += `<div class="section-title" style="font-size:12px; margin-top:20px;">MyAnimeList</div>
                <div class="manga-grid" id="srGridMAL"></div>`;
@@ -1080,6 +1122,27 @@ async function doSearch(q) {
 
     if (sourceId === 'mangadex') {
       fillGrid('srGridMD', data.data);
+    } else if (sourceId === 'comick') {
+      const grid = document.getElementById('srGridComick');
+      if (grid) {
+        grid.innerHTML = (data || []).map(m => `
+          <div class="manga-card" data-comick-title="${m.title.replace(/"/g, '&quot;')}">
+            <div class="manga-cover-wrap">
+              ${m.md_covers && m.md_covers[0] ? `<img class="manga-cover" src="https://meo.comick.pictures/${m.md_covers[0].b2key}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'manga-cover-ph',textContent:'📖'}))">` : '<div class="manga-cover-ph">📖</div>'}
+            </div>
+            <div class="manga-info">
+              <div class="manga-title">${m.title}</div>
+              <div class="manga-sub">Comick Search</div>
+            </div>
+          </div>`).join('');
+        grid.querySelectorAll('[data-comick-title]').forEach(card => {
+          card.addEventListener('click', () => {
+            const title = card.dataset.comickTitle;
+            document.getElementById('searchInput').value = title;
+            doSearch(title);
+          });
+        });
+      }
     } else if (sourceId === 'mal') {
       const grid = document.getElementById('srGridMAL');
       grid.innerHTML = data.data.map(m => `
@@ -1533,6 +1596,8 @@ const readerState = {
   pageWidth: '800',
   mode: 'single',
   direction: 'ltr',
+  imageQuality: 'original',
+  preloadCount: 3,
   zoom: 100,
   fitMode: 'width', // 'width', 'height', 'screen', 'original'
   touchStartX: 0,
@@ -1607,11 +1672,15 @@ async function openReader(chIdx) {
   readerState.loaded  = new Set();
   readerState.total   = 0;
   readerState.isOffline = !!dlChapter;
-  readerState.mode = 'single';
+  readerState.mode = S.db.settings?.defaultReaderMode || 'single';
   readerState.direction = S.db.settings?.defaultDirection || document.getElementById('readerDirectionSelect').value || 'ltr';
+  readerState.imageQuality = S.db.settings?.imageQuality || 'original';
+  readerState.preloadCount = Number(S.db.settings?.preloadPages ?? 3);
   // Sync UI selects to defaults
   document.getElementById('readingModeSelect').value = readerState.mode;
   document.getElementById('readerDirectionSelect').value = readerState.direction;
+  document.getElementById('imageQualitySelect').value = readerState.imageQuality;
+  document.getElementById('preloadSelect').value = String(readerState.preloadCount);
 
   // Restore reading position
   const savedPos = Number(S.db.history?.[mid]?.[ch.id] ?? 0);
@@ -1657,18 +1726,44 @@ function renderTargetPage(readerPages, readerLoading) {
   // In scroll mode we wait for full render or background filling
 }
 
+function compressDataUrl(dataUrl, targetWidth = 1100, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, targetWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Image compression failed'));
+    img.src = dataUrl;
+  });
+}
+
 function renderAllPages(readerPages) {
   const pw = readerState.pageWidth || '800';
   const maxW = pw === '9999' ? '100%' : pw + 'px';
   const styleStr = getPageStyleString();
   
-  // Apply Mode
-  readerPages.classList.toggle('mode-single', readerState.mode === 'single');
-  
-  const src = readerState.pages[readerState.currentPage];
-  readerPages.innerHTML = src
-    ? `<img class="reader-page active" src="${src}" data-page="${readerState.currentPage}" style="${styleStr}; transition: opacity 0.2s ease-in-out;" onwheel="handleReaderWheel(event)" ontouchstart="handleTouchStart(event)" ontouchend="handleTouchEnd(event)" onmousedown="handleMouseDown(event)">`
-    : `<div class="reader-page-ph">Loading page ${readerState.currentPage + 1}...</div>`;
+  const isSingle = readerState.mode === 'single';
+  readerPages.classList.toggle('mode-single', isSingle);
+
+  if (isSingle) {
+    const src = readerState.pages[readerState.currentPage];
+    readerPages.innerHTML = src
+      ? `<img class="reader-page active" src="${src}" data-page="${readerState.currentPage}" style="${styleStr}; transition: opacity 0.2s ease-in-out;" onwheel="handleReaderWheel(event)" ontouchstart="handleTouchStart(event)" ontouchend="handleTouchEnd(event)" onmousedown="handleMouseDown(event)">`
+      : `<div class="reader-page-ph">Loading page ${readerState.currentPage + 1}...</div>`;
+  } else {
+    readerPages.innerHTML = readerState.pages.map((src, i) => {
+      if (src) {
+        return `<img class="reader-page ${i === readerState.currentPage ? 'active' : ''}" src="${src}" data-page="${i}" style="${styleStr}; transition: opacity 0.2s ease-in-out;" onwheel="handleReaderWheel(event)" ontouchstart="handleTouchStart(event)" ontouchend="handleTouchEnd(event)" onmousedown="handleMouseDown(event)">`;
+      }
+      return `<div class="reader-page-ph">Loading page ${i + 1}...</div>`;
+    }).join('');
+  }
   
   // Preload next pages with direction awareness
   preloadNextPages();
@@ -1685,7 +1780,7 @@ async function preloadNextPages() {
   
   // Direction-aware preloading
   const isRTL = readerState.direction === 'rtl';
-  const lookahead = 3;
+  const lookahead = Math.max(0, Number(readerState.preloadCount || 3));
   
   // Preload in the direction the user is reading
   let rangesToPreload = [];
@@ -1701,11 +1796,12 @@ async function preloadNextPages() {
     for (let i = start; i < end; i++) rangesToPreload.push(i);
   }
   
+  if (lookahead === 0) return;
   for (const i of rangesToPreload) {
     if ((!readerState.loaded.has(i) || !readerState.pages[i]) && readerState.urls[i]) {
       try {
-        const b64 = await api.fetchImage(readerState.urls[i]);
-        readerState.pages[i] = b64;
+        const data = await api.fetchImage(readerState.urls[i]);
+        readerState.pages[i] = readerState.imageQuality === 'data-saver' ? await compressDataUrl(data) : data;
         readerState.loaded.add(i);
       } catch {}
     }
@@ -2144,31 +2240,31 @@ function showWhatsNew(version) {
       
       <ul style="list-style:none; padding:0; margin:0 0 32px 0; display:flex; flex-direction:column; gap:16px;">
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🎨</span>
+          <span style="font-size:20px;">🧭</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Accent Colors</div>
-            <div style="font-size:12px; color:var(--text2);">Personalize Inkflow with your choice of theme colors in Settings.</div>
-          </div>
-        </li>
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🔍</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Library Search</div>
-            <div style="font-size:12px; color:var(--text2);">New search bar in Library view makes finding series a breeze.</div>
+            <div style="font-weight:bold; font-size:14px;">Scroll Reading Mode</div>
+            <div style="font-size:12px; color:var(--text2);">Read chapters in continuous scroll mode for faster navigation.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
           <span style="font-size:20px;">⚡</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Performance Refinement</div>
-            <div style="font-size:12px; color:var(--text2);">Refactored UI components for snappier filtering and smoother navigation.</div>
+            <div style="font-weight:bold; font-size:14px;">Smart Preloading</div>
+            <div style="font-size:12px; color:var(--text2);">Choose how many pages Inkflow preloads for smoother reading.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🛡️</span>
+          <span style="font-size:20px;">💾</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Security & Stability</div>
-            <div style="font-size:12px; color:var(--text2);">Hardened API handlers and removed legacy code to ensure a crash-free experience.</div>
+            <div style="font-weight:bold; font-size:14px;">Data Saver Mode</div>
+            <div style="font-size:12px; color:var(--text2);">Compresses loaded pages for reduced resource usage.</div>
+          </div>
+        </li>
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">📂</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Open Downloads Folder</div>
+            <div style="font-size:12px; color:var(--text2);">Jump straight to your saved chapter files from Settings.</div>
           </div>
         </li>
       </ul>
