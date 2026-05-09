@@ -2,6 +2,10 @@
 
 const api = window.electron;
 
+const CHANGELOG = [
+  { icon: '🔔', title: 'Custom modals', desc: 'Replaced the windows dialogue for updates and history clearing' },
+];
+
 const S = {
   view: 'home',
   manga: null,
@@ -2256,41 +2260,15 @@ function showWhatsNew(version) {
       <div style="font-size:13px; color:var(--text2); margin-bottom:24px;">Welcome back! Here is what we've improved in this update.</div>
       
       <ul style="list-style:none; padding:0; margin:0 0 32px 0; display:flex; flex-direction:column; gap:16px;">
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🧭</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Scroll Reading Mode</div>
-            <div style="font-size:12px; color:var(--text2);">Read chapters in continuous scroll mode for faster navigation.</div>
-          </div>
-        </li>
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">⚡</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Smart Preloading</div>
-            <div style="font-size:12px; color:var(--text2);">Choose how many pages Inkflow preloads for smoother reading.</div>
-          </div>
-        </li>
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">💾</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Data Saver Mode</div>
-            <div style="font-size:12px; color:var(--text2);">Compresses loaded pages for reduced resource usage.</div>
-          </div>
-        </li>
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">📂</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Open Downloads Folder</div>
-            <div style="font-size:12px; color:var(--text2);">Jump straight to your saved chapter files from Settings.</div>
-          </div>
-        </li>
-        <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🗂️</span>
-          <div>
-            <div style="font-weight:bold; font-size:14px;">Library Sorting</div>
-            <div style="font-size:12px; color:var(--text2);">Sort your collection alphabetically or by date added.</div>
-          </div>
-        </li>
+        ${CHANGELOG.map(item => `
+          <li style="display:flex; gap:12px;">
+            <span style="font-size:20px;">${item.icon}</span>
+            <div>
+              <div style="font-weight:bold; font-size:14px;">${item.title}</div>
+              <div style="font-size:12px; color:var(--text2);">${item.desc}</div>
+            </div>
+          </li>
+        `).join('')}
       </ul>
 
       <button class="btn btn-primary" id="closeWhatsNew" style="width:100%; padding:12px;">Awesome, let's go!</button>
