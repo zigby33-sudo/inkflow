@@ -169,16 +169,28 @@
     justify-content: center;
   }
 
-  /* Sources Settings Styles */
-  .sources-list { display: flex; flex-direction: column; gap: 12px; max-width: 600px; margin-top: 20px; }
-  .source-item { 
-    display: flex; justify-content: space-between; align-items: center; 
-    padding: 16px 20px; background: var(--bg-panel); border: 1px solid var(--glass-border); 
-    border-radius: var(--radius-lg); backdrop-filter: blur(10px);
+  /* Settings View Styles */
+  .settings-container { max-width: 700px; margin: 32px auto; padding: 0 20px; }
+  .settings-group { margin-bottom: 40px; }
+  .settings-group-title {
+    font-family: var(--font-head); font-weight: 900; font-size: 14px;
+    color: var(--accent); margin-bottom: 16px; text-transform: uppercase;
+    letter-spacing: 2px; border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 8px; opacity: 0.8;
   }
-  .source-info { flex: 1; }
-  .source-name { font-family: var(--font-head); font-weight: 700; color: #fff; margin-bottom: 4px; font-size: 14px; }
-  .source-desc { font-size: 11px; color: var(--text2); line-height: 1.4; }
+  .settings-row { 
+    display: flex; justify-content: space-between; align-items: center; 
+    padding: 16px; background: var(--bg-panel); border: 1px solid var(--glass-border); 
+    border-radius: var(--radius-lg); margin-bottom: 10px; transition: all 0.2s;
+    backdrop-filter: blur(10px);
+  }
+  .settings-row:hover { border-color: var(--accent); transform: translateX(4px); }
+  .settings-info { flex: 1; padding-right: 20px; }
+  .settings-name { font-family: var(--font-head); font-weight: 700; color: #fff; margin-bottom: 4px; font-size: 15px; }
+  .settings-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  
+  /* Source-specific item override */
+  .source-item { border-left: 3px solid var(--accent); }
 
   /* Modern Toggle Switch */
   .switch { position: relative; display: inline-block; width: 42px; height: 22px; flex-shrink: 0; }
@@ -344,7 +356,7 @@
       <button class="nav-btn" data-view="library">Library</button>
       <button class="nav-btn" data-view="history">History</button>
       <button class="nav-btn" data-view="downloads">Downloads</button>
-      <button class="nav-btn" data-view="sources">Sources</button>
+      <button class="nav-btn" data-view="settings">Settings</button>
     </nav>
     <div class="search-bar">
       <span class="search-icon">⌕</span>
@@ -426,6 +438,22 @@
                 <option value="1000">Wide</option>
                 <option value="600">Narrow</option>
                 <option value="9999">Full</option>
+              </select>
+            </div>
+            <div class="reader-panel-setting">
+              <span>Image Quality</span>
+              <select class="reader-select" id="imageQualitySelect">
+                <option value="original">Original</option>
+                <option value="data-saver">Data Saver</option>
+              </select>
+            </div>
+            <div class="reader-panel-setting">
+              <span>Preload Pages</span>
+              <select class="reader-select" id="preloadSelect">
+                <option value="3">3 Pages</option>
+                <option value="5">5 Pages</option>
+                <option value="10">10 Pages</option>
+                <option value="0">Disabled</option>
               </select>
             </div>
           </div>

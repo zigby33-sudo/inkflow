@@ -171,7 +171,7 @@ function render() {
     case 'library':   renderLibrary(main); break;
     case 'history':   renderHistory(main); break;
     case 'downloads': renderDownloads(main); break;
-    case 'sources':   renderSources(main); break;
+    case 'settings':  renderSettings(main); break;
   }
 }
 
@@ -349,26 +349,28 @@ function renderHistory(main) {
 }
 
 // ── SOURCES / SETTINGS ────────────────────────────────────────────
-function renderSources(main) {
-  const sources = S.db.settings.sources;
+async function renderSettings(main) {
+  // Ensure we have the latest settings from the database
+  S.db.settings = await api.settingsGet();
+  const sources = S.db.settings.sources || {};
 
   // Storage info
-  const libCount = Object.keys(S.db.library).length;
-  const dlManga = Object.keys(S.downloads).length;
-  const dlChapters = Object.values(S.downloads).reduce((acc, chs) => acc + Object.keys(chs).length, 0);
-  const totalPages = Object.values(S.downloads).flatMap(m => Object.values(m)).reduce((acc, ch) => acc + (ch.pages?.length || 0), 0);
+  const libCount = Object.keys(S.db.library || {}).length;
+  const dlManga = Object.keys(S.downloads || {}).length;
+  const dlChapters = Object.values(S.downloads || {}).reduce((acc, chs) => acc + Object.keys(chs).length, 0);
+  const totalPages = Object.values(S.downloads || {}).flatMap(m => Object.values(m)).reduce((acc, ch) => acc + (ch.pages?.length || 0), 0);
 
   main.innerHTML = `
-    <div class="section-title"><span class="ic">⚙</span> Sources & Settings</div>
+    <div class="settings-container">
+      <div class="section-title"><span class="ic">⚙</span> Settings</div>
 
-    <div class="settings-section">
-      <div class="settings-label">DATA SOURCES</div>
-      <div class="sources-list">
+      <div class="settings-group">
+        <div class="settings-group-title">Content Sources</div>
         ${Object.entries(sources).map(([id, meta]) => `
-          <div class="source-item">
-            <div class="source-info">
-              <div class="source-name">${meta.name}</div>
-              <div class="source-desc">${sourceDesc(id)}</div>
+          <div class="settings-row source-item">
+            <div class="settings-info">
+              <div class="settings-name">${meta.name}</div>
+              <div class="settings-desc">${sourceDesc(id)}</div>
             </div>
             <label class="switch">
               <input type="checkbox" data-source-id="${id}" ${meta.enabled ? 'checked' : ''}>
@@ -377,83 +379,98 @@ function renderSources(main) {
           </div>
         `).join('')}
       </div>
-    </div>
 
-    <div class="settings-section" style="margin-top:28px;">
-      <div class="settings-label">STORAGE</div>
-      <div class="storage-stats">
-        <div class="storage-stat"><span class="storage-val">${libCount}</span><span class="storage-lbl">In Library</span></div>
-        <div class="storage-stat"><span class="storage-val">${dlManga}</span><span class="storage-lbl">Downloaded Series</span></div>
-        <div class="storage-stat"><span class="storage-val">${dlChapters}</span><span class="storage-lbl">Downloaded Chapters</span></div>
-        <div class="storage-stat"><span class="storage-val">${totalPages}</span><span class="storage-lbl">Total Pages</span></div>
-      </div>
-      <button class="btn btn-ghost" id="clearCacheSettingsBtn" style="margin-top:14px;font-size:11px;">🗑 Clear Image Cache</button>
-    </div>
-
-    <div class="settings-section" style="margin-top:28px;">
-      <div class="settings-label">DEFAULT READER SETTINGS</div>
-      <div class="reader-settings-grid">
-        <div class="reader-setting-row">
-          <span class="reader-setting-lbl">Default Direction</span>
+      <div class="settings-group">
+        <div class="settings-group-title">Reader Preferences</div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Reading Direction</div>
+            <div class="settings-desc">Choose your preferred page flow.</div>
+          </div>
           <select class="reader-select" id="defaultDirectionSel">
             <option value="ltr" ${(S.db.settings.defaultDirection || 'ltr') === 'ltr' ? 'selected' : ''}>Left → Right</option>
             <option value="rtl" ${(S.db.settings.defaultDirection || 'ltr') === 'rtl' ? 'selected' : ''}>Right → Left (Manga)</option>
           </select>
         </div>
-        <div class="reader-setting-row">
-          <span class="reader-setting-lbl">Default Mode</span>
-          <select class="reader-select" id="defaultModeSel">
-            <option value="single" ${(S.db.settings.defaultMode || 'single') === 'single' ? 'selected' : ''}>Single Page</option>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Image Quality</div>
+            <div class="settings-desc">Data Saver compresses images to save bandwidth.</div>
+          </div>
+          <select class="reader-select" id="imageQualitySel">
+            <option value="original" ${(S.db.settings.imageQuality || 'original') === 'original' ? 'selected' : ''}>Original</option>
+            <option value="data-saver" ${(S.db.settings.imageQuality || 'original') === 'data-saver' ? 'selected' : ''}>Data Saver</option>
           </select>
         </div>
       </div>
-    </div>
 
-    <div class="settings-section" style="margin-top:28px;">
-      <div class="settings-label">KEYBOARD SHORTCUTS</div>
-      <div class="shortcuts-grid">
-        ${[
-          ['← / →', 'Previous / Next page'],
-          ['[ / ]', 'Previous / Next chapter'],
-          ['Space', 'Next page'],
-          ['F', 'Toggle fullscreen'],
-          ['H', 'Toggle UI visibility'],
-          ['D', 'Toggle RTL / LTR direction'],
-          ['Esc', 'Close reader'],
-        ].map(([key, desc]) => `
-          <div class="shortcut-row">
-            <kbd class="kbd">${key}</kbd>
-            <span class="shortcut-desc">${desc}</span>
-          </div>`).join('')}
+      <div class="settings-group">
+        <div class="settings-group-title">Storage & Cache</div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Local Library</div>
+            <div class="settings-desc">${libCount} series tracking progress.</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Downloads</div>
+            <div class="settings-desc">${dlChapters} chapters (${totalPages} pages) saved.</div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Image Cache</div>
+            <div class="settings-desc">Clearing cache will free up memory.</div>
+          </div>
+          <button class="btn btn-ghost" id="clearCacheSettingsBtn">🗑 Clear</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Shortcuts</div>
+        <div class="shortcuts-grid">
+          ${[
+            ['← / →', 'Prev/Next Page'],
+            ['[ / ]', 'Prev/Next Chapter'],
+            ['F', 'Fullscreen'],
+            ['H', 'Toggle UI'],
+            ['D', 'Flip Direction'],
+            ['Esc', 'Close Reader'],
+          ].map(([key, desc]) => `
+            <div class="settings-row" style="padding: 10px 16px;">
+              <kbd class="kbd" style="background:var(--bg3); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:11px; border:1px solid var(--glass-border);">${key}</kbd>
+              <span style="font-size:12px; color:var(--text2);">${desc}</span>
+            </div>`).join('')}
+        </div>
       </div>
     </div>
   `;
 
-  // Bind source toggles
+  // Event Listeners for Saving immediately
   main.querySelectorAll('[data-source-id]').forEach(chk => {
-    chk.addEventListener('change', () => {
+    chk.addEventListener('change', async () => {
       S.db.settings.sources[chk.dataset.sourceId].enabled = chk.checked;
-      api.dbSave(S.db);
+      await api.settingsSave(S.db.settings);
       showToast(`${S.db.settings.sources[chk.dataset.sourceId].name} ${chk.checked ? 'enabled' : 'disabled'}`);
     });
   });
 
-  // Clear cache
+  document.getElementById('defaultDirectionSel')?.addEventListener('change', async (e) => {
+    S.db.settings.defaultDirection = e.target.value;
+    await api.settingsSave(S.db.settings);
+    showToast('Default direction saved');
+  });
+
+  document.getElementById('imageQualitySel')?.addEventListener('change', async (e) => {
+    S.db.settings.imageQuality = e.target.value;
+    await api.settingsSave(S.db.settings);
+    showToast('Image quality preference saved');
+  });
+
   document.getElementById('clearCacheSettingsBtn')?.addEventListener('click', async () => {
     await api.clearCache();
     showToast('Image cache cleared');
-  });
-
-  // Default reader settings
-  document.getElementById('defaultDirectionSel')?.addEventListener('change', e => {
-    S.db.settings.defaultDirection = e.target.value;
-    api.dbSave(S.db);
-    showToast('Default direction saved');
-  });
-  document.getElementById('defaultModeSel')?.addEventListener('change', e => {
-    S.db.settings.defaultMode = e.target.value;
-    api.dbSave(S.db);
-    showToast('Default mode saved');
   });
 }
 

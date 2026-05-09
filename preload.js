@@ -30,9 +30,23 @@ contextBridge.exposeInMainWorld('electron', {
   dbGet: () => ipcRenderer.invoke('db-get'),
   dbSave: (db) => ipcRenderer.invoke('db-save', db),
   dbClear: () => ipcRenderer.invoke('db-clear'),
+  settingsGet: () => ipcRenderer.invoke('settings-get'),
+  settingsSave: (settings) => ipcRenderer.invoke('settings-save', settings),
 
   // Window controls
   winMinimize: () => ipcRenderer.send('window-minimize'),
   winMaximize: () => ipcRenderer.send('window-maximize'),
   winClose: () => ipcRenderer.send('window-close'),
+  winIsMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  onMaximizedChange: (cb) => {
+    const listener = (_, isMax) => cb(isMax);
+    ipcRenderer.on('window-maximized', listener);
+    return () => ipcRenderer.removeListener('window-maximized', listener);
+  },
+  getTheme: () => ipcRenderer.invoke('get-theme'),
+  onThemeChange: (cb) => {
+    const listener = (_, theme) => cb(theme);
+    ipcRenderer.on('theme-changed', listener);
+    return () => ipcRenderer.removeListener('theme-changed', listener);
+  },
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -190,6 +190,7 @@ ipcMain.on('window-maximize', () => {
   else win.maximize();
 });
 ipcMain.on('window-close', () => win?.close());
+ipcMain.handle('window-is-maximized', () => win?.isMaximized());
 
 // Get downloaded chapter list
 ipcMain.handle('get-downloads', async () => {
@@ -245,6 +246,14 @@ ipcMain.handle('clear-cache', async () => {
 ipcMain.handle('db-get', async () => await loadDB());
 ipcMain.handle('db-save', async (_, db) => { await saveDB(db); return true; });
 ipcMain.handle('db-clear', async () => { saveDB({ library: {}, progress: {}, history: { recent: [] }, settings: {} }); return true; });
+ipcMain.handle('settings-get', async () => loadDB().settings || {});
+ipcMain.handle('settings-save', async (_, settings) => {
+  const db = loadDB();
+  db.settings = { ...(db.settings || {}), ...settings };
+  saveDB(db);
+  return true;
+});
+ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 
 // ─── Window ───────────────────────────────────────────────────────────────────
 let win;
@@ -253,10 +262,14 @@ function createWindow() {
     width: 1280, height: 820,
     minWidth: 900, minHeight: 600,
     show: false,
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#00000000', // Transparent for mica/vibrancy
+    transparent: process.platform !== 'linux',
     frame: false, // Make window frameless
     titleBarStyle: 'hidden', // Keeps native traffic lights on macOS
+    trafficLightPosition: { x: 18, y: 18 }, // Improved padding
     autoHideMenuBar: true,
+    vibrancy: 'under-window', // macOS effect
+    visualEffectState: 'active',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -268,6 +281,13 @@ function createWindow() {
 
   win.loadFile('renderer/index.html');
 
+  if (process.platform === 'win32') {
+    win.setBackgroundMaterial('mica'); // Modern Windows 11 effect
+  }
+
+  win.on('maximize', () => win.webContents.send('window-maximized', true));
+  win.on('unmaximize', () => win.webContents.send('window-maximized', false));
+
   // Smooth show once ready
   win.once('ready-to-show', () => {
     win.show();
@@ -278,6 +298,11 @@ function createWindow() {
     win.webContents.openDevTools();
   }
 }
+
+// Notify renderer when system theme changes
+nativeTheme.on('updated', () => {
+  win?.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+});
 
 app.whenReady().then(() => {
   // Handle the 'inkflow://' protocol to serve local images efficiently
