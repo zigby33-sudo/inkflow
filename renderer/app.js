@@ -21,12 +21,16 @@ const S = {
   homeSort: 'followedCount',
   homeOffset: 0,
   updateProgress: null,
+  libSearch: '',
 };
 
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
   S.db = await api.dbGet();
   S.downloads = await api.getDownloads();
+
+  // Apply high-quality system font stack
+  applyFonts();
 
   // Initialize history if missing
   if (!S.db.history) S.db.history = {};
@@ -150,6 +154,9 @@ async function init() {
     }
   });
 
+  // Apply Accent Color
+  if (S.db.settings.accentColor) applyAccent(S.db.settings.accentColor);
+
   // Handle background update notifications
   api.onUpdateStatus((msg) => showToast(msg));
 
@@ -166,7 +173,7 @@ async function init() {
   });
 
   // Version check for What's New popup
-  const currentVersion = '1.2.0';
+  const currentVersion = '1.3.0';
   if (S.db.settings.lastVersion !== currentVersion) {
     setTimeout(() => showWhatsNew(currentVersion), 1000); // Small delay for better UX
     S.db.settings.lastVersion = currentVersion;
@@ -177,6 +184,31 @@ async function init() {
   api.checkForUpdates();
 
   navigate('home');
+}
+
+function applyFonts() {
+  if (document.getElementById('inkflow-fonts')) return;
+  const style = document.createElement('style');
+  style.id = 'inkflow-fonts';
+  style.textContent = `
+    :root {
+      /* Modern system font stacks for better readability */
+      --font-head: "Inter", "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+      --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", "SFMono-Regular", "Consolas", monospace;
+    }
+    body {
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function applyAccent(color) {
+  document.documentElement.style.setProperty('--accent', color);
 }
 
 function resetReaderTimer() {
@@ -400,7 +432,22 @@ async function renderSettings(main) {
 
   main.innerHTML = `
     <div class="settings-container">
-      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.2.0 STABLE</span></div>
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.3.0 STABLE</span></div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Appearance</div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Accent Color</div>
+            <div class="settings-desc">Personalize the application theme color.</div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            ${['#4a90e2', '#a855f7', '#22c55e', '#eab308', '#ef4444'].map(c => `
+              <div class="accent-btn" data-color="${c}" style="width:22px; height:22px; border-radius:50%; background:${c}; cursor:pointer; border:2px solid ${S.db.settings.accentColor === c ? '#fff' : 'transparent'}; box-shadow:0 0 0 1px rgba(255,255,255,0.1)"></div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
 
       <div class="settings-group">
         <div class="settings-group-title">Content Sources</div>
@@ -503,6 +550,17 @@ async function renderSettings(main) {
     </div>
   `;
 
+  // Appearance Listeners
+  main.querySelectorAll('.accent-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const color = btn.dataset.color;
+      S.db.settings.accentColor = color;
+      applyAccent(color);
+      await api.settingsSave(S.db.settings);
+      renderSettings(main);
+    });
+  });
+
   // Event Listeners for Saving immediately
   main.querySelectorAll('[data-source-id]').forEach(chk => {
     chk.addEventListener('change', async () => {
@@ -535,7 +593,7 @@ async function renderSettings(main) {
   }
 
   document.getElementById('viewChangelogBtn')?.addEventListener('click', () => {
-    showWhatsNew('1.2.0');
+    showWhatsNew('1.3.0');
   });
 
   document.getElementById('checkUpdateBtn')?.addEventListener('click', async () => {
@@ -1323,26 +1381,53 @@ function renderLibrary(main) {
   ];
 
   const activeCat = S.libFilter || 'all';
+  const libSearch = S.libSearch || '';
 
   main.innerHTML = `
     <div class="section-title"><span class="ic">★</span> My Library</div>
-    <div class="tabs">
-      ${categories.map(c => `<button class="tab ${activeCat === c.id ? 'active' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+      <div class="tabs" style="margin:0">
+        ${categories.map(c => `<button class="tab ${activeCat === c.id ? 'active' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}
+      </div>
+      <input type="text" id="libSearchInput" class="chapter-search-input" style="width:200px; margin:0; font-size:11px;" placeholder="Search your library..." value="${libSearch}">
     </div>
     <div class="manga-grid" id="libGrid"></div>`;
 
   main.querySelectorAll('.tab').forEach(t => {
     t.addEventListener('click', () => {
       S.libFilter = t.dataset.cat;
-      renderLibrary(main);
+      const grid = document.getElementById('libGrid');
+      const filtered = performLibFilter(ids, S.libFilter, S.libSearch);
+      renderLibGrid(grid, filtered);
+      main.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === S.libFilter));
     });
   });
 
-  const filteredIds = activeCat === 'all' 
-    ? ids 
-    : ids.filter(id => S.db.library[id].malStatus === activeCat);
+  document.getElementById('libSearchInput')?.addEventListener('input', e => {
+    S.libSearch = e.target.value;
+    const grid = document.getElementById('libGrid');
+    const filtered = performLibFilter(ids, S.libFilter || 'all', S.libSearch);
+    renderLibGrid(grid, filtered);
+  });
 
-  const grid = document.getElementById('libGrid');
+  const filteredIds = performLibFilter(ids, activeCat, libSearch);
+  renderLibGrid(document.getElementById('libGrid'), filteredIds);
+}
+
+function performLibFilter(ids, category, search) {
+  let filtered = category === 'all' 
+    ? ids 
+    : ids.filter(id => S.db.library[id].malStatus === category);
+
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(id => S.db.library[id].title.toLowerCase().includes(q));
+  }
+  return filtered;
+}
+
+function renderLibGrid(grid, filteredIds) {
+  if (!grid) return;
   grid.innerHTML = filteredIds.map(id => {
     const e = S.db.library[id];
     const hasDl = !!S.downloads[id];
@@ -2057,31 +2142,31 @@ function showWhatsNew(version) {
       
       <ul style="list-style:none; padding:0; margin:0 0 32px 0; display:flex; flex-direction:column; gap:16px;">
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">☁️</span>
+          <span style="font-size:20px;">🎨</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">GitHub Integration</div>
-            <div style="font-size:12px; color:var(--text2);">Inkflow now fetches updates directly from GitHub for better reliability.</div>
+            <div style="font-weight:bold; font-size:14px;">Accent Colors</div>
+            <div style="font-size:12px; color:var(--text2);">Personalize Inkflow with your choice of theme colors in Settings.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">📈</span>
+          <span style="font-size:20px;">🔍</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Live Update Progress</div>
-            <div style="font-size:12px; color:var(--text2);">See exactly how much of an update is downloaded with the new Settings progress bar.</div>
+            <div style="font-weight:bold; font-size:14px;">Library Search</div>
+            <div style="font-size:12px; color:var(--text2);">New search bar in Library view makes finding series a breeze.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">📖</span>
+          <span style="font-size:20px;">⚡</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Reader Refinements</div>
-            <div style="font-size:12px; color:var(--text2);">Adjusted sidebar layouts and improved text wrapping for a cleaner look.</div>
+            <div style="font-weight:bold; font-size:14px;">Performance Refinement</div>
+            <div style="font-size:12px; color:var(--text2);">Refactored UI components for snappier filtering and smoother navigation.</div>
           </div>
         </li>
         <li style="display:flex; gap:12px;">
-          <span style="font-size:20px;">🧹</span>
+          <span style="font-size:20px;">🛡️</span>
           <div>
-            <div style="font-weight:bold; font-size:14px;">Cleanup</div>
-            <div style="font-size:12px; color:var(--text2);">Removed unstable legacy sources to focus on core performance and stability.</div>
+            <div style="font-weight:bold; font-size:14px;">Security & Stability</div>
+            <div style="font-size:12px; color:var(--text2);">Hardened API handlers and removed legacy code to ensure a crash-free experience.</div>
           </div>
         </li>
       </ul>
