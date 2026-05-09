@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob: inkflow: https://*.mangadex.org https://*.myanimelist.net https://*.mangaplus.shueisha.co.jp https://*.myanimelist.net; script-src 'self' 'unsafe-inline'">
+<title>Inkflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Noto+Serif+JP:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* UI Improvements Layer */
+  :root {
+    --bg-deep: #07070a;
+    --bg-panel: rgba(20, 20, 25, 0.7);
+    --glass: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --accent-glow: 0 0 20px rgba(255, 62, 105, 0.2);
+  }
+
+  body {
+    background-color: var(--bg-deep);
+    overflow: hidden; /* App container handles scroll */
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* Frameless Window Controls */
+  .titlebar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 32px;
+    background: #050508;
+    border-bottom: 1px solid var(--glass-border);
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10000;
+  }
+  .titlebar-drag { flex: 1; height: 100%; -webkit-app-region: drag; }
+  .window-controls { display: flex; height: 100%; -webkit-app-region: no-drag; }
+  .win-btn {
+    width: 45px; height: 100%;
+    background: transparent; border: none; color: #777;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; transition: all 0.2s;
+  }
+  .win-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+  .win-btn.close:hover { background: #e81123; color: #fff; }
+
+  /* Modern Header */
+  .header {
+    margin-top: 32px;
+    background: var(--bg-panel) !important;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  /* Manga Card Polish */
+  .manga-card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s, box-shadow 0.3s;
+  }
+  .manga-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent);
+    box-shadow: var(--accent-glow);
+  }
+  .manga-title { color: #fff; font-weight: 700; }
+  .manga-badge {
+    background: var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  /* Detail View Refinement */
+  .detail-header {
+    background: linear-gradient(180deg, rgba(255,62,105,0.05) 0%, transparent 100%);
+    padding: 30px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+  }
+  .tag { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: #ccc; }
+
+  /* Reader UI Refinement */
+  .reader-topbar {
+    background: rgba(10, 10, 15, 0.85) !important;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    margin-top: 32px; /* Push down to clear the frameless titlebar */
+    z-index: 30; /* Ensure it stays above the loading overlay (z-index 20) */
+  }
+  .reader-panel {
+    background: rgba(10, 10, 15, 0.9) !important;
+    backdrop-filter: blur(20px);
+    border-left: 1px solid var(--glass-border);
+    box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+  }
+  .reader-icon-btn:hover { background: var(--accent); transform: scale(1.1); }
+
+  .reader-topbar.hidden { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+  .reader-topbar { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s; }
+
+  /* Sidebar Improvements */
+  .reader-panel {
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    width: 260px !important;
+  }
+  .reader-panel-info {
+    padding: 20px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .sidebar-cover-wrap {
+    width: 44px;
+    aspect-ratio: 2/3;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--bg3);
+    border: 1px solid var(--glass-border);
+    flex-shrink: 0;
+  }
+  .sidebar-cover-wrap img { width: 100%; height: 100%; object-fit: cover; }
+  .sidebar-manga-meta { flex: 1; min-width: 0; }
+  .sidebar-manga-title {
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #fff;
+  }
+  .sidebar-chapter-info {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    margin-top: 2px;
+  }
+  .reader-panel-scroll { flex: 1; overflow-y: auto; padding: 10px 0; }
+  .reader-panel-group { padding: 10px 0; border-bottom: 1px solid var(--glass-border); }
+  .reader-panel-group:last-child { border-bottom: none; }
+  .reader-panel-label {
+    padding: 0 20px 10px;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text2);
+    text-transform: uppercase;
+    font-weight: 900;
+  }
+  .reader-panel-section { padding: 5px 20px 15px; }
+  .reader-panel-setting { padding: 8px 20px; }
+  .reader-panel-btn {
+    width: calc(100% - 40px);
+    margin: 5px 20px;
+    font-size: 10px;
+    background: rgba(255,255,255,0.03);
+    border-color: var(--glass-border);
+    display: flex;
+    justify-content: center;
+  }
+
+  /* Sources Settings Styles */
+  .sources-list { display: flex; flex-direction: column; gap: 12px; max-width: 600px; margin-top: 20px; }
+  .source-item { 
+    display: flex; justify-content: space-between; align-items: center; 
+    padding: 16px 20px; background: var(--bg-panel); border: 1px solid var(--glass-border); 
+    border-radius: var(--radius-lg); backdrop-filter: blur(10px);
+  }
+  .source-info { flex: 1; }
+  .source-name { font-family: var(--font-head); font-weight: 700; color: #fff; margin-bottom: 4px; font-size: 14px; }
+  .source-desc { font-size: 11px; color: var(--text2); line-height: 1.4; }
+
+  /* Modern Toggle Switch */
+  .switch { position: relative; display: inline-block; width: 42px; height: 22px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { 
+    position: absolute; cursor: pointer; inset: 0; background-color: rgba(255,255,255,0.1); 
+    transition: .3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 34px; 
+  }
+  .slider:before { 
+    position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; 
+    background-color: white; transition: .3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 50%; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  input:checked + .slider { background-color: var(--accent); }
+  input:checked + .slider:before { transform: translateX(20px); }
+
+  /* Source Bar */
+  .source-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 12px;
+  }
+
+  /* Continue Reading Section */
+  .hero-continue {
+    background: linear-gradient(90deg, rgba(230, 57, 70, 0.15) 0%, transparent 100%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 32px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 0.3s;
+  }
+  .hero-continue:hover { border-color: var(--accent); }
+  .hero-thumb {
+    width: 80px; aspect-ratio: 2/3; border-radius: 4px; object-fit: cover;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .hero-meta { flex: 1; min-width: 0; }
+  .hero-label { 
+    font-family: var(--font-mono); font-size: 10px; color: var(--accent); 
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .hero-title {
+    font-family: var(--font-head); font-weight: 900; font-size: 20px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hero-sub { color: var(--text2); font-size: 12px; margin-top: 4px; }
+
+  /* Expandable Description */
+  .detail-desc {
+    max-height: 80px;
+    transition: max-height 0.5s ease;
+    mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+  }
+  .detail-desc.expanded {
+    max-height: 1000px;
+    mask-image: none;
+  }
+  .read-more-btn {
+    background: none; border: none; color: var(--accent);
+    font-size: 11px; font-weight: 700; cursor: pointer; padding: 4px 0;
+    text-transform: uppercase;
+  }
+
+  /* Reader Page Animation */
+  .reader-page { opacity: 0; transition: opacity 0.3s ease; }
+  .reader-page.active { opacity: 1; }
+
+  /* Navigation Buttons */
+  .nav-btn {
+    position: relative;
+    padding: 8px 16px;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+  .nav-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 2px; left: 16px; right: 16px;
+    height: 2px; background: var(--accent);
+    box-shadow: var(--accent-glow);
+  }
+
+  /* Animation */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .manga-grid > * { animation: fadeIn 0.4s ease forwards; }
+
+  /* Splash Screen */
+  #splashScreen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-deep);
+    z-index: 20000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s ease, visibility 0.5s;
+  }
+  .splash-content {
+    text-align: center;
+    animation: splashPulse 2s infinite ease-in-out;
+  }
+  .splash-logo {
+    font-family: var(--font-head);
+    font-weight: 900;
+    font-size: 48px;
+    color: #fff;
+    margin-bottom: 20px;
+  }
+  .splash-logo span { color: var(--accent); }
+  .splash-loader {
+    width: 200px;
+    height: 2px;
+    background: var(--glass-border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 0 auto;
+  }
+  .splash-loader-bar {
+    width: 40%; height: 100%; background: var(--accent);
+    animation: splashLoading 1.5s infinite ease-in-out;
+  }
+  @keyframes splashPulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.05); opacity: 1; } }
+  @keyframes splashLoading { 0% { transform: translateX(-150%); } 100% { transform: translateX(250%); } }
+</style>
+</head>
+<body>
+<div id="splashScreen">
+  <div class="splash-content">
+    <div class="splash-logo">墨 Ink<span>flow</span></div>
+    <div class="splash-loader">
+      <div class="splash-loader-bar"></div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <div class="titlebar">
+    <div class="titlebar-drag"></div>
+    <div class="window-controls">
+      <button class="win-btn" id="winMinBtn" title="Minimize">‒</button>
+      <button class="win-btn" id="winMaxBtn" title="Maximize">□</button>
+      <button class="win-btn close" id="winCloseBtn" title="Close">✕</button>
+    </div>
+  </div>
+  <div id="readerHitboxLeft" class="reader-hitbox left"></div>
+  <div id="readerHitboxRight" class="reader-hitbox right"></div>
+
+  <header class="header">
+    <div class="logo" id="logoBtn">
+      <div class="logo-mark">墨</div>
+      Ink<span>flow</span>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="home">Browse</button>
+      <button class="nav-btn" data-view="library">Library</button>
+      <button class="nav-btn" data-view="history">History</button>
+      <button class="nav-btn" data-view="downloads">Downloads</button>
+      <button class="nav-btn" data-view="sources">Sources</button>
+    </nav>
+    <div class="search-bar">
+      <span class="search-icon">⌕</span>
+      <input type="text" placeholder="Search all sources..." id="searchInput">
+    </div>
+  </header>
+
+  <main id="mainContent" class="main"></main>
+
+  <!-- READER OVERLAY -->
+  <div class="reader-view" id="readerView">
+    <!-- Top bar (like MangaDex) -->
+    <div class="reader-topbar" id="readerToolbar">
+      <button class="reader-close-btn" id="closeReaderBtn">✕</button>
+      <div class="reader-topbar-manga" id="readerMangaTitle">—</div>
+      <div class="reader-topbar-chapter" id="readerTitle">—</div>
+      <div class="reader-topbar-right">
+        <span class="reader-page-count" id="pageCount"></span>
+        <button class="reader-icon-btn" id="fullscreenBtn" title="Fullscreen">⛶</button>
+        <button class="reader-icon-btn" id="readerSettingsBtn" title="Settings">⚙</button>
+      </div>
+    </div>
+
+    <!-- Main reader area -->
+    <div class="reader-body">
+      <!-- Pages area -->
+      <div class="reader-pages" id="readerPages"></div>
+
+      <!-- Side panel (like MangaDex right panel) -->
+      <div class="reader-panel" id="readerPanel">
+        <div class="reader-panel-info">
+          <div class="sidebar-cover-wrap" id="sidebarCoverWrap"></div>
+          <div class="sidebar-manga-meta">
+            <div class="sidebar-manga-title" id="sidebarMangaTitle"></div>
+            <div class="sidebar-chapter-info" id="sidebarChapterInfo"></div>
+          </div>
+        </div>
+
+        <div class="reader-panel-scroll">
+          <div class="reader-panel-group">
+            <div class="reader-panel-label"><span class="ic"> navigation</span></div>
+            <div class="reader-panel-section">
+              <div style="font-size:10px; color:#666; margin-bottom:5px">Page</div>
+              <div class="reader-panel-nav">
+                <button class="reader-nav-btn" id="prevPageBtn">‹</button>
+                <select class="reader-select" id="pageSelect"></select>
+                <button class="reader-nav-btn" id="nextPageBtn">›</button>
+              </div>
+            </div>
+            <div class="reader-panel-section">
+              <div style="font-size:10px; color:#666; margin-bottom:5px">Chapter</div>
+              <div class="reader-panel-nav">
+                <button class="reader-nav-btn" id="prevChBtn">‹</button>
+                <select class="reader-select" id="chapterSelect"></select>
+                <button class="reader-nav-btn" id="nextChBtn">›</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="reader-panel-group">
+            <div class="reader-panel-label"><span class="ic">⚙ settings</span></div>
+            <div class="reader-panel-setting">
+              <span>Direction</span>
+              <select class="reader-select" id="readerDirectionSelect">
+                <option value="ltr">Left to Right</option>
+                <option value="rtl">Right to Left (Manga)</option>
+              </select>
+            </div>
+            <div class="reader-panel-setting">
+              <span>Reading Mode</span>
+              <select class="reader-select" id="readingModeSelect">
+                <option value="single">Single Page</option>
+              </select>
+            </div>
+            <div class="reader-panel-setting">
+              <span>Page Width</span>
+              <select class="reader-select" id="pageWidthSelect">
+                <option value="800">Normal</option>
+                <option value="1000">Wide</option>
+                <option value="600">Narrow</option>
+                <option value="9999">Full</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="reader-panel-group actions">
+            <button class="reader-panel-btn" id="clearCacheBtn">Clear Image Cache</button>
+            <button class="reader-panel-btn" id="reportChBtn">Report Chapter</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="reader-loading" id="readerLoading" style="display:none">
+      <div class="spinner-large"></div>
+      <div id="readerLoadingText">Loading pages...</div>
+      <div class="reader-progress-track">
+        <div class="reader-progress-fill" id="readerLoadingBar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
