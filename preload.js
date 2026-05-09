@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electron', {
   mdexFetch: (path, params) => ipcRenderer.invoke('mdex-fetch', path, params),
   jikanFetch: (path) => ipcRenderer.invoke('jikan-fetch', path),
   mplusFetch: (path, params) => ipcRenderer.invoke('mplus-fetch', path, params),
+  comickFetch: (path, params) => ipcRenderer.invoke('comick-fetch', path, params),
   fetchImage: (url) => ipcRenderer.invoke('fetch-image', url),
   fetchImagesBatch: (urls, concurrency) => ipcRenderer.invoke('fetch-images-batch', urls, concurrency),
 

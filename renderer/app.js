@@ -18,6 +18,8 @@ const S = {
   readerToolbarVisible: true,
   toolbarTimer: null,
   activeSource: 'mangadex',
+  homeSort: 'followedCount',
+  homeOffset: 0,
 };
 
 // ── Init ──────────────────────────────────────────────────────────
@@ -31,16 +33,32 @@ async function init() {
   if (!S.db.progress) S.db.progress = {};
   if (!S.db.library) S.db.library = {};
   if (!S.db.settings) S.db.settings = {};
+  const defaultSources = {
+    mangadex: { enabled: true, name: 'MangaDex' },
+    mal: { enabled: true, name: 'MyAnimeList' },
+    mangaplus: { enabled: true, name: 'MangaPlus' },
+    comick: { enabled: true, name: 'Comick' }
+  };
+
   if (!S.db.settings.sources) {
     S.db.settings.sources = {
       mangadex: { enabled: true, name: 'MangaDex' },
       mal: { enabled: true, name: 'MyAnimeList' },
-      mangaplus: { enabled: true, name: 'MangaPlus' }
+      mangaplus: { enabled: true, name: 'MangaPlus' },
+      comick: { enabled: true, name: 'Comick' }
     };
-  } else if (!S.db.settings.sources.mangaplus) {
-    // Ensure MangaPlus is added to existing configuration
-    S.db.settings.sources.mangaplus = { enabled: true, name: 'MangaPlus' };
-    api.dbSave(S.db);
+    S.db.settings.sources = defaultSources;
+  } else {
+    let changed = false;
+    if (!S.db.settings.sources.mangaplus) { S.db.settings.sources.mangaplus = { enabled: true, name: 'MangaPlus' }; changed = true; }
+    if (!S.db.settings.sources.comick) { S.db.settings.sources.comick = { enabled: true, name: 'Comick' }; changed = true; }
+    for (const [id, meta] of Object.entries(defaultSources)) {
+      if (!S.db.settings.sources[id]) {
+        S.db.settings.sources[id] = meta;
+        changed = true;
+      }
+    }
+    if (changed) api.dbSave(S.db);
   }
 
   // Window Controls
@@ -479,28 +497,31 @@ function sourceDesc(id) {
     mangadex: 'The largest free manga platform. Browse, read, and download thousands of titles.',
     mal: 'MyAnimeList scores, rankings and metadata for manga detail pages.',
     mangaplus: 'Official publisher. Browse trending Shonen/Seinen series.',
+    comick: 'High quality scans and excellent UI from Comick.io.',
   };
   return descs[id] || '';
 }
 
 async function renderBrowse(main) {
-  const sources = S.db.settings.sources;
-  const enabled = Object.entries(sources).filter(([_, v]) => v.enabled);
+  const sources = S.db.settings.sources || {};
+  const enabled = Object.entries(sources).filter(([_, v]) => v?.enabled);
   
   const sourceBar = `
     <div class="source-bar" style="margin-bottom: 20px; display: flex; gap: 10px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">
       ${enabled.map(([id, meta]) => `
-        <button class="nav-btn source-btn ${S.activeSource === id ? 'active' : ''}" data-source="${id}">${meta.name}</button>
+        <button class="nav-btn source-btn ${S.activeSource === id ? 'active' : ''}" data-source="${id}">${meta?.name || id}</button>
       `).join('')}
     </div>
   `;
 
   // Setup source switcher UI
-  main.innerHTML = sourceBar + loading(`Loading ${S.db.settings.sources[S.activeSource]?.name || 'Source'}...`);
+  main.innerHTML = sourceBar + loading(`Loading ${sources[S.activeSource]?.name || 'Source'}...`);
 
   try {
     if (S.activeSource === 'mangaplus') {
       await renderMangaPlusBrowse(main, sourceBar);
+    } else if (S.activeSource === 'comick') {
+      await renderComickBrowse(main, sourceBar);
     } else if (S.activeSource === 'mal') {
       await renderMALBrowse(main, sourceBar);
     } else {
@@ -580,22 +601,24 @@ const GENRE_TAGS = [
 let homeActiveGenre = null;
 
 async function renderHome(main) {
-  main.innerHTML = loading('Loading popular manga...');
+  const sort = S.homeSort || 'followedCount';
+  S.homeOffset = 0;
+  main.innerHTML = loading(`Loading catalog sorted by ${sort}...`);
   try {
-    const [pop, latest] = await Promise.all([
-      api.mdexFetch('/manga', {
-        limit: 24, 'order[followedCount]': 'desc',
-        'includes[]': ['cover_art', 'author'],
-        'contentRating[]': ['safe', 'suggestive'],
-        'availableTranslatedLanguage[]': ['en'],
-      }),
-      api.mdexFetch('/manga', {
-        limit: 16, 'order[updatedAt]': 'desc',
-        'includes[]': ['cover_art', 'author'],
-        'contentRating[]': ['safe', 'suggestive'],
-        'availableTranslatedLanguage[]': ['en'],
-      }),
-    ]);
+    const res = await api.mdexFetch('/manga', {
+      limit: 100,
+      [`order[${sort}]`]: 'desc',
+      'includes[]': ['cover_art', 'author'],
+      'contentRating[]': ['safe', 'suggestive'],
+      'availableTranslatedLanguage[]': ['en'],
+    });
+
+    const sortOptions = [
+      { id: 'followedCount', label: 'Popularity' },
+      { id: 'rating', label: 'Rating' },
+      { id: 'updatedAt', label: 'Latest Updates' },
+      { id: 'createdAt', label: 'Newest Additions' }
+    ];
 
     // Continue reading hero
     const lastId = S.db.history?.lastMangaId;
@@ -615,6 +638,13 @@ async function renderHome(main) {
 
     main.innerHTML = `
       ${heroHtml}
+      <div class="home-controls" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:15px; padding:0 4px;">
+        <div class="section-title" style="margin:0"><span class="ic">✨</span> Discovery</div>
+        <select id="homeSortSelect" class="reader-select" style="width:auto; font-size:12px;">
+          ${sortOptions.map(o => `<option value="${o.id}" ${sort === o.id ? 'selected' : ''}>Sort by: ${o.label}</option>`).join('')}
+        </select>
+      </div>
+
       <div class="genre-filter-bar" id="genreBar">
         ${GENRE_TAGS.map(g =>
           `<button class="genre-chip${homeActiveGenre === g.id ? ' active' : ''}" data-genre-id="${g.id}">${g.label}</button>`
@@ -625,14 +655,13 @@ async function renderHome(main) {
         <div class="manga-grid" id="genreGrid"></div>
       </div>
       <div id="defaultSections">
-        <div class="section-title"><span class="ic">🔥</span> Popular Right Now</div>
         <div class="manga-grid" id="popGrid"></div>
-        <div class="section-title"><span class="ic">⏱</span> Recently Updated</div>
-        <div class="manga-grid" id="latestGrid"></div>
+        <div id="loadMoreHomeWrap" style="text-align:center; padding:20px 0 50px;">
+          <button id="loadMoreHomeBtn" class="btn btn-outline" style="width:200px; font-size:12px;">Load More</button>
+        </div>
       </div>
     `;
-    fillGrid('popGrid', pop.data);
-    fillGrid('latestGrid', latest.data);
+    fillGrid('popGrid', res.data);
 
     // Hero click
     main.querySelector('.hero-continue')?.addEventListener('click', (e) => {
@@ -643,8 +672,66 @@ async function renderHome(main) {
     document.querySelectorAll('.genre-chip').forEach(btn => {
       btn.addEventListener('click', () => filterByGenre(btn.dataset.genreId, btn.textContent));
     });
+
+    // Sort dropdown listener
+    document.getElementById('homeSortSelect').addEventListener('change', e => {
+      S.homeSort = e.target.value;
+      renderHome(main);
+    });
+
+    // Load More listener
+    document.getElementById('loadMoreHomeBtn').addEventListener('click', loadMoreHome);
   } catch (e) {
     main.innerHTML = err('Failed to load: ' + e.message, () => renderHome(main));
+  }
+}
+
+async function loadMoreHome() {
+  const btn = document.getElementById('loadMoreHomeBtn');
+  if (!btn) return;
+  
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Loading...';
+  
+  S.homeOffset += 100;
+  const sort = S.homeSort || 'followedCount';
+  
+  try {
+    const res = await api.mdexFetch('/manga', {
+      limit: 100,
+      offset: S.homeOffset,
+      [`order[${sort}]`]: 'desc',
+      'includes[]': ['cover_art', 'author'],
+      'contentRating[]': ['safe', 'suggestive'],
+      'availableTranslatedLanguage[]': ['en'],
+    });
+
+    if (res.data && res.data.length > 0) {
+      const grid = document.getElementById('popGrid');
+      const temp = document.createElement('div');
+      temp.innerHTML = res.data.map(m => mangaCard(m)).join('');
+      
+      // Bind events to the new batch of cards before appending
+      temp.querySelectorAll('[data-manga-id]').forEach(card => {
+        card.addEventListener('click', () => openManga(card.dataset.mangaId));
+      });
+      
+      while (temp.firstChild) {
+        grid.appendChild(temp.firstChild);
+      }
+
+      btn.disabled = false;
+      btn.textContent = originalText;
+      if (res.data.length < 100) document.getElementById('loadMoreHomeWrap').style.display = 'none';
+    } else {
+      document.getElementById('loadMoreHomeWrap').style.display = 'none';
+    }
+  } catch (e) {
+    showToast('Failed to load more: ' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = 'Retry Load More';
+    S.homeOffset -= 100;
   }
 }
 
@@ -694,6 +781,45 @@ async function renderMangaPlusBrowse(main, sourceBar) {
     });
   } catch (e) {
     main.innerHTML = sourceBar + err('Mplus sync failed: ' + e.message);
+  }
+}
+
+async function renderComickBrowse(main, sourceBar) {
+  try {
+    main.innerHTML = sourceBar + loading('Fetching Comick top manga...');
+    const res = await api.comickFetch('/top', { type: 'manga', limit: 30 });
+    const list = Array.isArray(res) ? res : (res.data || []);
+    const statusMap = { 1: 'Ongoing', 2: 'Completed', 3: 'Cancelled', 4: 'Hiatus' };
+
+    main.innerHTML = sourceBar + `
+      <div class="section-title"><span class="ic">🚀</span> Comick Top Manga</div>
+      <div class="manga-grid" id="comickGrid"></div>`;
+
+    const grid = document.getElementById('comickGrid');
+    grid.innerHTML = list.map(m => {
+      const cover = m.md_covers?.[0]?.b2key ? `https://meo.comick.pictures/${m.md_covers[0].b2key}` : '';
+      return `
+        <div class="manga-card" data-comick-title="${m.title.replace(/"/g, '&quot;')}" data-hid="${m.hid}">
+          <div class="manga-cover-wrap">
+            ${cover ? `<img class="manga-cover" src="${cover}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=manga-cover-ph>📖</div>'">` : '<div class="manga-cover-ph">📖</div>'}
+          </div>
+          <div class="manga-info">
+            <div class="manga-title">${m.title}</div>
+            <div class="manga-sub">${statusMap[m.status] || 'Ongoing'}</div>
+          </div>
+          <div class="manga-badge" style="background:#f97316; color:#fff;">CK</div>
+        </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.manga-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const q = card.dataset.comickTitle;
+        document.getElementById('searchInput').value = q;
+        doSearch(q);
+      });
+    });
+  } catch (e) {
+    main.innerHTML = sourceBar + err('Comick API failed: ' + e.message);
   }
 }
 
@@ -833,6 +959,13 @@ async function doSearch(q) {
     }));
   }
 
+  if (sources.comick.enabled) {
+    enabledSourceIds.push('comick');
+    searchPromises.push(api.comickFetch('/comic/search', {
+      q: q, limit: 15, tl: 'en'
+    }));
+  }
+
   if (sources.mal.enabled) {
     enabledSourceIds.push('mal');
     searchPromises.push(api.jikanFetch(`/manga?q=${encodeURIComponent(q)}&limit=20`));
@@ -856,6 +989,9 @@ async function doSearch(q) {
     if (sourceId === 'mangadex') {
       html += `<div class="section-title" style="font-size:12px; margin-top:20px;">MangaDex</div>
                <div class="manga-grid" id="srGridMD"></div>`;
+    } else if (sourceId === 'comick') {
+      html += `<div class="section-title" style="font-size:12px; margin-top:20px;">Comick</div>
+               <div class="manga-grid" id="srGridComick"></div>`;
     } else if (sourceId === 'mal') {
       html += `<div class="section-title" style="font-size:12px; margin-top:20px;">MyAnimeList</div>
                <div class="manga-grid" id="srGridMAL"></div>`;
@@ -872,6 +1008,27 @@ async function doSearch(q) {
 
     if (sourceId === 'mangadex') {
       fillGrid('srGridMD', data.data);
+    } else if (sourceId === 'comick') {
+      const grid = document.getElementById('srGridComick');
+      const list = Array.isArray(data) ? data : (data.data || []);
+      grid.innerHTML = list.map(m => {
+        const cover = m.md_covers?.[0]?.b2key ? `https://meo.comick.pictures/${m.md_covers[0].b2key}` : '';
+        return `
+          <div class="manga-card" data-comick-title="${m.title.replace(/"/g, '&quot;')}" data-hid="${m.hid}">
+            <div class="manga-cover-wrap">
+              ${cover ? `<img class="manga-cover" src="${cover}" loading="lazy" onerror="this.src=''">` : '<div class="manga-cover-ph">📖</div>'}
+            </div>
+            <div class="manga-info">
+              <div class="manga-title">${m.title}</div>
+              <div class="manga-sub">Tap to search MangaDex</div>
+            </div>
+          </div>`;
+      }).join('');
+      grid.querySelectorAll('[data-comick-title]').forEach(card => {
+        card.addEventListener('click', () => {
+          doSearch(card.dataset.comickTitle);
+        });
+      });
     } else if (sourceId === 'mal') {
       const grid = document.getElementById('srGridMAL');
       grid.innerHTML = data.data.map(m => `

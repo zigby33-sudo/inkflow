@@ -46,8 +46,8 @@ async function nodeFetch(url, options = {}) {
   };
 }
 
-async function apiGet(url) {
-  const res = await nodeFetch(url);
+async function apiGet(url, options = {}) {
+  const res = await nodeFetch(url, options);
   if (res.status === 429) throw new Error('Rate limited. Please wait a moment.');
   if (res.status >= 400) throw new Error(`API error ${res.status}`);
   return JSON.parse(res.body.toString('utf8'));
@@ -87,6 +87,24 @@ ipcMain.handle('mplus-fetch', async (_, urlPath, params = {}) => {
     });
     return res.body; // Returns Buffer
   } catch (e) { console.error('MPlus Fetch Error:', e); throw e; }
+});
+
+// Comick API proxy
+ipcMain.handle('comick-fetch', async (_, urlPath, params = {}) => {
+  try {
+    const baseUrl = 'https://api.comick.io';
+    const normalizedPath = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
+    const url = new URL(baseUrl + normalizedPath);
+    url.searchParams.set('tachiyomi', 'true'); // Required for access
+
+    Object.entries(params).forEach(([k, v]) => {
+      if (Array.isArray(v)) v.forEach(vi => url.searchParams.append(k, vi));
+      else url.searchParams.set(k, String(v));
+    });
+    return await apiGet(url.toString(), {
+      headers: { 'Referer': 'https://comick.io', 'User-Agent': 'Mozilla/5.0' }
+    });
+  } catch (e) { console.error('Comick Fetch Error:', e); throw e; }
 });
 
 // ─── In-memory image cache (covers & pages, max ~150 entries) ────────────────
