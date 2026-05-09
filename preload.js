@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electron', {
   dbClear: () => ipcRenderer.invoke('db-clear'),
   settingsGet: () => ipcRenderer.invoke('settings-get'),
   settingsSave: (settings) => ipcRenderer.invoke('settings-save', settings),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 
   // Window controls
   winMinimize: () => ipcRenderer.send('window-minimize'),

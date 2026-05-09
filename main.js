@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, autoUpdater, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -7,7 +7,10 @@ const http = require('http');
 const { URL, pathToFileURL } = require('url');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) app.quit();
+if (require('electron-squirrel-startup')) {
+  app.quit();
+  // Return to prevent any further execution during install/update/uninstall
+}
 
 // Register custom protocol for high-performance image loading
 protocol.registerSchemesAsPrivileged([
@@ -255,6 +258,39 @@ ipcMain.handle('settings-save', async (_, settings) => {
   saveDB(db);
   return true;
 });
+
+// ─── Auto Updater ─────────────────────────────────────────────────────────────
+const UPDATE_SERVER_URL = 'https://your-deployment-url.com/update'; // Replace with your actual update server
+
+if (app.isPackaged) {
+  const feedURL = `${UPDATE_SERVER_URL}/${process.platform}/${app.getVersion()}`;
+  try {
+    autoUpdater.setFeedURL({ url: feedURL });
+  } catch (e) {
+    console.error('Updater error:', e.message);
+  }
+}
+
+autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName) => {
+  const dialogOpts = {
+    type: 'info',
+    buttons: ['Restart', 'Later'],
+    title: 'Application Update',
+    message: process.platform === 'win32' ? releaseNotes : releaseName,
+    detail: 'A new version has been downloaded. Restart the application to apply the updates.'
+  };
+
+  dialog.showMessageBox(dialogOpts).then((returnValue) => {
+    if (returnValue.response === 0) autoUpdater.quitAndInstall();
+  });
+});
+
+ipcMain.handle('check-for-updates', () => {
+  if (!app.isPackaged) return 'Update check ignored in development.';
+  autoUpdater.checkForUpdates();
+  return 'Checking for updates...';
+});
+
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 
 // ─── Window ───────────────────────────────────────────────────────────────────
@@ -265,6 +301,7 @@ function createWindow() {
     minWidth: 900, minHeight: 600,
     show: false,
     backgroundColor: '#00000000', // Transparent for mica/vibrancy
+    backgroundColor: '#00000000', // Keeps it transparent for mica
     transparent: process.platform !== 'linux',
     frame: false, // Make window frameless
     titleBarStyle: 'hidden', // Keeps native traffic lights on macOS
@@ -284,6 +321,7 @@ function createWindow() {
   win.loadFile('renderer/index.html');
 
   if (process.platform === 'win32') {
+    win.setBackgroundColor('#1a1a1a'); // Dark fallback before Mica loads
     win.setBackgroundMaterial('mica'); // Modern Windows 11 effect
   }
 

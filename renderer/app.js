@@ -149,6 +149,14 @@ async function init() {
     }
   });
 
+  // Version check for What's New popup
+  const currentVersion = '1.1.0';
+  if (S.db.settings.lastVersion !== currentVersion) {
+    setTimeout(() => showWhatsNew(currentVersion), 1000); // Small delay for better UX
+    S.db.settings.lastVersion = currentVersion;
+    api.dbSave(S.db);
+  }
+
   navigate('home');
 }
 
@@ -373,7 +381,7 @@ async function renderSettings(main) {
 
   main.innerHTML = `
     <div class="settings-container">
-      <div class="section-title"><span class="ic">⚙</span> Settings</div>
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;"><span><span class="ic">⚙</span> Settings</span> <span style="font-size:10px; opacity:0.5; font-family:var(--font-mono); font-weight:normal; letter-spacing:0.5px;">v1.1.0 STABLE</span></div>
 
       <div class="settings-group">
         <div class="settings-group-title">Content Sources</div>
@@ -417,6 +425,13 @@ async function renderSettings(main) {
 
       <div class="settings-group">
         <div class="settings-group-title">Storage & Cache</div>
+        <div class="settings-row">
+          <div class="settings-info">
+            <div class="settings-name">Software Updates</div>
+            <div class="settings-desc">Keep Inkflow up to date with the latest features.</div>
+          </div>
+          <button class="btn btn-primary" id="checkUpdateBtn">Check for Updates</button>
+        </div>
         <div class="settings-row">
           <div class="settings-info">
             <div class="settings-name">Local Library</div>
@@ -477,6 +492,11 @@ async function renderSettings(main) {
     S.db.settings.imageQuality = e.target.value;
     await api.settingsSave(S.db.settings);
     showToast('Image quality preference saved');
+  });
+
+  document.getElementById('checkUpdateBtn')?.addEventListener('click', async () => {
+    const status = await api.checkForUpdates();
+    showToast(status);
   });
 
   document.getElementById('clearCacheSettingsBtn')?.addEventListener('click', async () => {
@@ -1969,6 +1989,74 @@ function showToast(msg, isError = false) {
   t.className = 'toast' + (isError ? ' error' : '') + ' show';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function showWhatsNew(version) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10000; opacity: 0; transition: opacity 0.3s ease;
+  `;
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="
+      background: var(--bg2); border: 1px solid var(--glass-border);
+      border-radius: 16px; padding: 32px; width: 450px; max-width: 90%;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(20px);
+      transition: transform 0.3s ease;
+    ">
+      <div style="font-family:var(--font-head); font-weight:900; font-size:24px; margin-bottom:8px; color:var(--accent);">What's New in v${version}</div>
+      <div style="font-size:13px; color:var(--text2); margin-bottom:24px;">Welcome back! Here is what we've improved in this update.</div>
+      
+      <ul style="list-style:none; padding:0; margin:0 0 32px 0; display:flex; flex-direction:column; gap:16px;">
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">✨</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Discovery Overhaul</div>
+            <div style="font-size:12px; color:var(--text2);">Sort the home screen by Popularity, Rating, or Updates. We've added pagination to show 100+ titles!</div>
+          </div>
+        </li>
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">📖</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Reader UI Polish</div>
+            <div style="font-size:12px; color:var(--text2);">The sidebar is now more compact and handles long chapter titles gracefully.</div>
+          </div>
+        </li>
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">🛡️</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Source Stability</div>
+            <div style="font-size:12px; color:var(--text2);">Consolidated core sources for a more reliable reading experience without broken scrapers.</div>
+          </div>
+        </li>
+        <li style="display:flex; gap:12px;">
+          <span style="font-size:20px;">🚀</span>
+          <div>
+            <div style="font-weight:bold; font-size:14px;">Performance & Updates</div>
+            <div style="font-size:12px; color:var(--text2);">Infrastructure for auto-updates and better installer branding for a professional look.</div>
+          </div>
+        </li>
+      </ul>
+
+      <button class="btn btn-primary" id="closeWhatsNew" style="width:100%; padding:12px;">Awesome, let's go!</button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  setTimeout(() => {
+    overlay.style.opacity = '1';
+    overlay.querySelector('.modal-content').style.transform = 'translateY(0)';
+  }, 10);
+
+  document.getElementById('closeWhatsNew').onclick = () => {
+    overlay.style.opacity = '0';
+    overlay.querySelector('.modal-content').style.transform = 'translateY(20px)';
+    setTimeout(() => overlay.remove(), 300);
+  };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────
