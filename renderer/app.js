@@ -187,10 +187,10 @@ async function init() {
   });
 
   // Version check for What's New popup
-  const currentVersion = '1.4.0';
-  if (S.db.settings.lastVersion !== currentVersion) {
-    setTimeout(() => showWhatsNew(currentVersion), 1000); // Small delay for better UX
-    S.db.settings.lastVersion = currentVersion;
+  // Using S.version which is dynamically fetched from the main process
+  if (S.db.settings.lastVersion !== S.version) {
+    setTimeout(() => showWhatsNew(S.version), 1000); // Small delay for better UX
+    S.db.settings.lastVersion = S.version;
     api.dbSave(S.db);
   }
 

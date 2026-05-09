@@ -293,6 +293,10 @@ function setupAutoUpdater() {
   });
   console.log(`[AutoUpdater] Checking releases at: https://github.com/zigby33-sudo/inkflow/releases`);
 
+  // Allow the app to detect and install releases marked as "Pre-release" on GitHub
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.allowDowngrade = false;
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.logger = console; // Optional: enables logging to main process stdout
@@ -314,7 +318,7 @@ function setupAutoUpdater() {
     let message = 'Update error: ' + err.message;
     
     if ((err?.message || '').includes('404') || (err?.message || '').includes('No published')) {
-      message = `No releases found for v${currentVersion}. Ensure a GitHub release tag matches your app version.`;
+      message = `No published releases found. Ensure your release on GitHub is not a "Draft" and that the tag matches your version.`;
     } else if ((err?.message || '').includes('ENOTFOUND') || (err?.message || '').includes('ETIMEDOUT')) {
       message = 'Network error checking for updates. Check your connection.';
     }
