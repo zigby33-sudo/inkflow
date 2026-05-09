@@ -8,8 +8,15 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Zigby/inkflow.git"
+    "url": "git+https://github.com/zigby33-sudo/inkflow.git"
   },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "zigby33-sudo",
+      "repo": "inkflow"
+    }
+  ],
   "scripts": {
     "run": "electron .",
     "start": "electron-forge start",

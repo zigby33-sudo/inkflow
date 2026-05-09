@@ -264,55 +264,66 @@ ipcMain.handle('get-version', () => app.getVersion());
 
 // ─── Auto Updater ─────────────────────────────────────────────────────────────
 
-// Programmatically configure the update source for GitHub.
-// This replaces the need for a physical 'app-update.yml' file.
-autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'Zigby',
-  repo: 'inkflow'
-});
-// Configure electron-updater
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.logger = console; // Optional: enables logging to main process stdout
-
-autoUpdater.on('update-available', () => {
-  win?.webContents.send('update-status', 'Update found! Downloading in background...');
-  win?.webContents.send('update-progress', 0);
-});
-
-autoUpdater.on('update-not-available', () => {
-  win?.webContents.send('update-status', 'Inkflow is up to date.');
-  win?.webContents.send('update-progress', null);
-});
-
-autoUpdater.on('error', (err) => {
-  win?.webContents.send('update-status', 'Update error: ' + err.message);
-  win?.webContents.send('update-progress', null);
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-  const msg = `Downloading: ${Math.round(progressObj.percent)}%`;
-  win?.webContents.send('update-status', msg);
-  win?.webContents.send('update-progress', progressObj.percent);
-});
-
-autoUpdater.on('update-downloaded', (info) => {
-  win?.webContents.send('update-progress', 100);
-  const dialogOpts = {
-    type: 'info',
-    buttons: ['Restart', 'Later'],
-    title: 'Application Update',
-    message: `Version ${info.version} is ready!`,
-    detail: 'A new version has been downloaded. Restart the application to apply the updates now.'
-  };
-
-  dialog.showMessageBox(dialogOpts).then((returnValue) => {
-    if (returnValue.response === 0) autoUpdater.quitAndInstall(false, true);
+function setupAutoUpdater() {
+  // Programmatically configure the update source for GitHub.
+  // This replaces the need for a physical 'app-update.yml' file.
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'zigby33-sudo',
+    repo: 'inkflow'
   });
-});
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = console; // Optional: enables logging to main process stdout
+
+  autoUpdater.on('update-available', () => {
+    win?.webContents.send('update-status', 'Update found! Downloading in background...');
+    win?.webContents.send('update-progress', 0);
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    win?.webContents.send('update-status', 'Inkflow is up to date.');
+    win?.webContents.send('update-progress', null);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto updater error:', err);
+    const message = (err?.message || '').includes('404')
+      ? 'No GitHub release found. Publish a release with the Squirrel update assets to enable updates.'
+      : 'Update error: ' + err.message;
+    win?.webContents.send('update-status', message);
+    win?.webContents.send('update-progress', null);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const msg = `Downloading: ${Math.round(progressObj.percent)}%`;
+    win?.webContents.send('update-status', msg);
+    win?.webContents.send('update-progress', progressObj.percent);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    win?.webContents.send('update-progress', 100);
+    const dialogOpts = {
+      type: 'info',
+      buttons: ['Restart', 'Later'],
+      title: 'Application Update',
+      message: `Version ${info.version} is ready!`,
+      detail: 'A new version has been downloaded. Restart the application to apply the updates now.'
+    };
+
+    dialog.showMessageBox(dialogOpts).then((returnValue) => {
+      if (returnValue.response === 0) autoUpdater.quitAndInstall(false, true);
+    });
+  });
+}
 
 ipcMain.handle('check-for-updates', () => {
+  if (!app.isPackaged) {
+    console.log('Skipping update check in development mode.');
+    return 'Update checks are only available in packaged releases.';
+  }
+
   autoUpdater.checkForUpdatesAndNotify();
   return 'Update check initiated...';
 });
@@ -392,6 +403,13 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  setupAutoUpdater();
+
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify();
+  } else {
+    console.log('Auto updates are disabled while running in development mode.');
+  }
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
