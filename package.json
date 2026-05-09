@@ -8,12 +8,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zigby33-sudo/inkflow.git"
+    "url": "git+https://github.com/zigby33/inkflow.git"
   },
   "publish": [
     {
       "provider": "github",
-      "owner": "zigby33-sudo",
+      "owner": "zigby33",
       "repo": "inkflow"
     }
   ],
@@ -59,7 +59,7 @@
           "name": "@electron-forge/publisher-github",
           "config": {
             "repository": {
-              "owner": "zigby33-sudo",
+              "owner": "zigby33",
               "name": "inkflow"
             },
             "draft": false,

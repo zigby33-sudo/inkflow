@@ -1,6 +1,4 @@
 const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, dialog, shell } = require('electron');
-// electron-updater is NOT used — it requires electron-builder's latest.yml assets
-// which electron-forge/Squirrel never generates. We check GitHub Releases API directly.
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -8,13 +6,10 @@ const https = require('https');
 const http = require('http');
 const { URL, pathToFileURL } = require('url');
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
-  // Return to prevent any further execution during install/update/uninstall
 }
 
-// Register custom protocol for high-performance image loading
 protocol.registerSchemesAsPrivileged([
   { scheme: 'inkflow', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
@@ -31,7 +26,7 @@ function loadDB() {
 }
 function saveDB(db) { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); }
 
-// ─── HTTP helpers (Node.js - no CORS) ────────────────────────────────────────
+// ─── HTTP helpers ─────────────────────────────────────────────────────────────
 async function nodeFetch(url, options = {}) {
   const response = await net.fetch(url, {
     method: options.method || 'GET',
@@ -60,7 +55,6 @@ async function apiGet(url, options = {}) {
 
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
 
-// MangaDex API proxy
 ipcMain.handle('mdex-fetch', async (_, urlPath, params) => {
   const base = 'https://api.mangadex.org';
   const url = new URL(base + urlPath);
@@ -73,12 +67,10 @@ ipcMain.handle('mdex-fetch', async (_, urlPath, params) => {
   return apiGet(url.toString());
 });
 
-// Jikan (MAL) API proxy
 ipcMain.handle('jikan-fetch', async (_, urlPath) => {
   return apiGet('https://api.jikan.moe/v4' + urlPath);
 });
 
-// MangaPlus (Discovery Proxy)
 ipcMain.handle('mplus-fetch', async (_, urlPath, params = {}) => {
   try {
     const url = new URL('https://jumpg-webapi.tokyo-shonenjump.com/api' + urlPath);
@@ -90,11 +82,10 @@ ipcMain.handle('mplus-fetch', async (_, urlPath, params = {}) => {
         'Session-Token': 'inkflow-v1'
       }
     });
-    return res.body; // Returns Buffer
+    return res.body;
   } catch (e) { console.error('MPlus Fetch Error:', e); throw e; }
 });
 
-// Comick API proxy
 ipcMain.handle('comick-fetch', async (_, urlPath, params) => {
   const url = new URL('https://api.comick.fun' + urlPath);
   if (params) {
@@ -106,7 +97,7 @@ ipcMain.handle('comick-fetch', async (_, urlPath, params) => {
   return apiGet(url.toString());
 });
 
-// ─── In-memory image cache (covers & pages, max ~150 entries) ────────────────
+// ─── In-memory image cache ──────────────────────────────────────────────────
 const imageCache = new Map();
 const IMAGE_CACHE_MAX = 200;
 function cacheSet(url, value) {
@@ -116,7 +107,6 @@ function cacheSet(url, value) {
   imageCache.set(url, value);
 }
 
-// Fetch image as base64 (for display in renderer without CORS issues)
 ipcMain.handle('fetch-image', async (_, url) => {
   if (imageCache.has(url)) return imageCache.get(url);
   const res = await nodeFetch(url, { headers: { 'Referer': 'https://mangadex.org/' } });
@@ -127,7 +117,6 @@ ipcMain.handle('fetch-image', async (_, url) => {
   return result;
 });
 
-// Fetch multiple images in parallel (batch for reader preloading)
 ipcMain.handle('fetch-images-batch', async (event, urls, concurrency = 6) => {
   const results = new Array(urls.length).fill(null);
   let idx = 0;
@@ -157,7 +146,6 @@ ipcMain.handle('fetch-images-batch', async (event, urls, concurrency = 6) => {
   return results;
 });
 
-// Download chapter pages to disk
 ipcMain.handle('download-chapter', async (event, mangaId, chapterId, chapterMeta, pageUrls) => {
   const dir = path.join(DOWNLOADS_DIR, mangaId, chapterId);
   await fsp.mkdir(dir, { recursive: true });
@@ -178,7 +166,7 @@ ipcMain.handle('download-chapter', async (event, mangaId, chapterId, chapterMeta
           const res = await nodeFetch(url, { headers: { 'Referer': 'https://mangadex.org/' } });
           if (res.status < 400) await fsp.writeFile(filePath, res.body);
           else throw new Error(`HTTP ${res.status}`);
-          await new Promise(r => setTimeout(r, 50)); // Politeness delay
+          await new Promise(r => setTimeout(r, 50));
         }
         pages[i] = filePath;
       } catch (e) {
@@ -193,13 +181,11 @@ ipcMain.handle('download-chapter', async (event, mangaId, chapterId, chapterMeta
   const workers = Array.from({ length: Math.min(3, pageUrls.length) }, downloadWorker);
   await Promise.all(workers);
 
-  // Save metadata
   const metaPath = path.join(dir, 'meta.json');
   await fsp.writeFile(metaPath, JSON.stringify({ ...chapterMeta, pages, downloadedAt: Date.now() }));
   return { success: true, pages, dir };
 });
 
-// Window Control IPC
 ipcMain.on('window-minimize', () => win?.minimize());
 ipcMain.on('window-maximize', () => {
   if (!win) return;
@@ -209,7 +195,6 @@ ipcMain.on('window-maximize', () => {
 ipcMain.on('window-close', () => win?.close());
 ipcMain.handle('window-is-maximized', () => win?.isMaximized());
 
-// Get downloaded chapter list
 ipcMain.handle('get-downloads', async () => {
   const result = {};
   try {
@@ -233,12 +218,10 @@ ipcMain.handle('get-downloads', async () => {
   return result;
 });
 
-// Read a downloaded chapter page (returns a high-performance protocol URL)
 ipcMain.handle('read-page', async (_, filePath) => {
   return `inkflow://local/${path.normalize(filePath)}`;
 });
 
-// Delete downloaded chapter
 ipcMain.handle('delete-download', async (_, mangaId, chapterId) => {
   const dir = path.join(DOWNLOADS_DIR, mangaId, chapterId);
   try {
@@ -252,7 +235,6 @@ ipcMain.handle('delete-download', async (_, mangaId, chapterId) => {
   return { success: true };
 });
 
-// Clear both in-memory image cache and Electron's network cache
 ipcMain.handle('clear-cache', async () => {
   imageCache.clear();
   await session.defaultSession.clearCache();
@@ -265,7 +247,6 @@ ipcMain.handle('open-downloads-folder', async () => {
   return result === '';
 });
 
-// DB operations (library + progress)
 ipcMain.handle('db-get', async () => await loadDB());
 ipcMain.handle('db-save', async (_, db) => { await saveDB(db); return true; });
 ipcMain.handle('db-clear', async () => { saveDB({ library: {}, progress: {}, history: { recent: [] }, settings: {} }); return true; });
@@ -279,17 +260,12 @@ ipcMain.handle('settings-save', async (_, settings) => {
 
 ipcMain.handle('get-version', () => app.getVersion());
 
-// ─── Auto Updater (GitHub Releases API) ───────────────────────────────────────
-// electron-forge + Squirrel does NOT generate the latest.yml that electron-updater
-// requires. So we query the GitHub Releases API directly and open the browser to
-// the release page when a newer version is found.
+// ─── Auto Updater ─────────────────────────────────────────────────────────────
 
-const GITHUB_OWNER = 'zigby33-sudo';
+const GITHUB_OWNER = 'zigby33';
 const GITHUB_REPO  = 'inkflow';
 
 function semverGt(a, b) {
-  // Returns true if version string a is greater than b
-  // Strips leading 'v' and handles x.y.z
   const parse = v => v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
   const [aMaj, aMin, aPat] = parse(a);
   const [bMaj, bMin, bPat] = parse(b);
@@ -304,8 +280,6 @@ async function checkGitHubForUpdate(silent = false) {
   win?.webContents.send('update-status', 'Checking for updates...');
 
   try {
-    // GitHub's latest release endpoint returns the most recent non-draft,
-    // non-prerelease release — exactly what we publish via electron-forge.
     const data = await apiGet(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
       { headers: { 'Accept': 'application/vnd.github.v3+json' } }
@@ -331,7 +305,6 @@ async function checkGitHubForUpdate(silent = false) {
       win?.webContents.send('update-status', `Update available: v${latestVersion}`);
       win?.webContents.send('update-progress', null);
 
-      // Prompt user to open the release page — Squirrel installers are in assets
       const { response } = await dialog.showMessageBox(win, {
         type: 'info',
         buttons: ['Download Update', 'Later'],
@@ -341,7 +314,6 @@ async function checkGitHubForUpdate(silent = false) {
         detail: `You have v${currentVersion}. The new version is ready to download from GitHub.\n\nRelease notes:\n${(data.body || 'No notes provided.').slice(0, 400)}`,
       });
 
-      // Store the version we notified about so the silent startup check doesn't repeat the prompt
       db.settings.notifiedUpdateVersion = latestVersion;
       saveDB(db);
 
@@ -372,7 +344,6 @@ function setupAutoUpdater() {
   const currentVersion = app.getVersion();
   console.log(`[Updater] App version: v${currentVersion}`);
   
-  // Check silently on startup — no "up to date" toast if already current
   if (app.isPackaged) {
     setTimeout(() => checkGitHubForUpdate(true), 3000);
   } else {
@@ -397,13 +368,13 @@ function createWindow() {
     width: 1280, height: 820,
     minWidth: 900, minHeight: 600,
     show: false,
-    backgroundColor: '#00000000', // Keeps it transparent for mica
+    backgroundColor: '#00000000',
     transparent: process.platform !== 'linux',
-    frame: false, // Make window frameless
-    titleBarStyle: 'hidden', // Keeps native traffic lights on macOS
-    trafficLightPosition: { x: 18, y: 18 }, // Improved padding
+    frame: false,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 18, y: 18 },
     autoHideMenuBar: true,
-    vibrancy: 'under-window', // macOS effect
+    vibrancy: 'under-window',
     visualEffectState: 'active',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -417,14 +388,13 @@ function createWindow() {
   win.loadFile('renderer/index.html');
 
   if (process.platform === 'win32') {
-    win.setBackgroundColor('#1a1a1a'); // Dark fallback before Mica loads
-    win.setBackgroundMaterial('mica'); // Modern Windows 11 effect
+    win.setBackgroundColor('#1a1a1a');
+    win.setBackgroundMaterial('mica');
   }
 
   win.on('maximize', () => win.webContents.send('window-maximized', true));
   win.on('unmaximize', () => win.webContents.send('window-maximized', false));
 
-  // Smooth show once ready
   win.once('ready-to-show', () => {
     win.show();
   });
@@ -435,20 +405,17 @@ function createWindow() {
   }
 }
 
-// Notify renderer when system theme changes
 nativeTheme.on('updated', () => {
   win?.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 });
 
 app.whenReady().then(() => {
-  // Handle the 'inkflow://' protocol to serve local images efficiently
   protocol.handle('inkflow', (request) => {
     const url = new URL(request.url);
     if (url.hostname !== 'local') return new Response('Forbidden', { status: 403 });
 
     let decodedPath = decodeURIComponent(url.pathname);
     
-    // Normalize Windows path formatting (/C:/path -> C:/path)
     if (process.platform === 'win32' && decodedPath.startsWith('/')) {
       decodedPath = decodedPath.slice(1);
     }
@@ -463,7 +430,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
-  setupAutoUpdater(); // startup check is handled inside setupAutoUpdater
+  setupAutoUpdater();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

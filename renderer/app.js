@@ -1,12 +1,7 @@
-// ═══════════════════════════════════════════════════════════════════
-// INKFLOW — Renderer App Logic
-// All API calls go through window.electron (IPC → main process)
-// so MangaDex CORS restrictions are bypassed entirely.
-// ═══════════════════════════════════════════════════════════════════
+// ════════════ INKFLOW ════════════
 
 const api = window.electron;
 
-// ── State ─────────────────────────────────────────────────────────
 const S = {
   view: 'home',
   manga: null,
@@ -25,16 +20,13 @@ const S = {
   version: '',
 };
 
-// ── Init ──────────────────────────────────────────────────────────
 async function init() {
   S.db = await api.dbGet();
   S.downloads = await api.getDownloads();
   S.version = await api.getVersion();
 
-  // Apply high-quality system font stack
   applyFonts();
 
-  // Initialize history if missing
   if (!S.db.history) S.db.history = {};
   if (!S.db.history.recent) S.db.history.recent = [];
   if (!S.db.progress) S.db.progress = {};
@@ -61,18 +53,15 @@ async function init() {
     if (changed) api.dbSave(S.db);
   }
 
-  // Window Controls
   document.getElementById('winMinBtn').addEventListener('click', () => api.winMinimize());
   document.getElementById('winMaxBtn').addEventListener('click', () => api.winMaximize());
   document.getElementById('winCloseBtn').addEventListener('click', () => api.winClose());
 
-  // Navigation
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.view));
   });
   document.getElementById('logoBtn').addEventListener('click', () => navigate('home'));
 
-  // Search
   let searchTimer;
   const searchInput = document.getElementById('searchInput');
   searchInput.addEventListener('input', e => {
@@ -84,7 +73,6 @@ async function init() {
     if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(e.target.value.trim()); }
   });
 
-  // Reader controls
   document.getElementById('closeReaderBtn').addEventListener('click', closeReader);
   document.getElementById('prevChBtn').addEventListener('click', () => shiftChapter(-1));
   document.getElementById('nextChBtn').addEventListener('click', () => shiftChapter(1));
@@ -97,7 +85,6 @@ async function init() {
   });
   document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
   
-  // Navigation Hitboxes
   document.getElementById('readerHitboxLeft').addEventListener('click', () => turnPage(-1));
   document.getElementById('readerHitboxRight').addEventListener('click', () => turnPage(1));
 
@@ -131,7 +118,6 @@ async function init() {
     showToast('Cache cleared successfully');
   });
 
-  // Download progress events from main process
   api.onDownloadProgress(({ chapterId, current, total }) => {
     const btn = document.querySelector(`[data-ch-id="${chapterId}"] .ch-dl-btn`);
     if (btn) btn.title = `${current}/${total}`;
@@ -142,7 +128,6 @@ async function init() {
     }
   });
 
-  // Immersive Reader: Auto-hide UI logic
   const readerView = document.getElementById('readerView');
   readerView.addEventListener('mousemove', () => {
     if (!readerView.classList.contains('active')) return;
@@ -153,14 +138,12 @@ async function init() {
     resetReaderTimer();
   });
 
-  // Hide Splash Screen
   const splash = document.getElementById('splashScreen');
   if (splash) {
     splash.style.opacity = '0';
     setTimeout(() => splash.remove(), 500);
   }
   
-  // Setup source switching listener
   document.addEventListener('click', e => {
     if (e.target.classList.contains('source-btn')) {
       S.activeSource = e.target.dataset.source;
@@ -168,10 +151,8 @@ async function init() {
     }
   });
 
-  // Apply Accent Color
   if (S.db.settings.accentColor) applyAccent(S.db.settings.accentColor);
 
-  // Handle background update notifications
   api.onUpdateStatus((msg) => showToast(msg));
 
   api.onUpdateProgress((pct) => {
@@ -186,15 +167,12 @@ async function init() {
     }
   });
 
-  // Version check for What's New popup
-  // Using S.version which is dynamically fetched from the main process
   if (S.db.settings.lastVersion !== S.version) {
-    setTimeout(() => showWhatsNew(S.version), 1000); // Small delay for better UX
+    setTimeout(() => showWhatsNew(S.version), 1000);
     S.db.settings.lastVersion = S.version;
     api.dbSave(S.db);
   }
 
-  // Auto-check for updates on startup
   api.checkForUpdates();
 
   navigate('home');

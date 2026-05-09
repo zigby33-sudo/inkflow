@@ -2,9 +2,9 @@
 
 ## Current Status
 - **App Version**: 1.4.0
-- **Repository**: https://github.com/zigby33-sudo/inkflow
+- **Repository**: https://github.com/zigby33/inkflow
 - **Update Provider**: GitHub (electron-updater)
-- **Expected Feed URL**: https://github.com/zigby33-sudo/inkflow/releases.atom
+- **Expected Feed URL**: https://github.com/zigby33/inkflow/releases.atom
 
 ## Why "No New Releases Found"?
 
@@ -18,7 +18,7 @@ The auto-updater checks for new releases on GitHub but needs specific conditions
   - ✅ Correct: `v1.4.0` (electron-updater accepts both)
   - ❌ Wrong: `release-1.4.0`, `1.4`, `1.4.0-rc1`
 
-**How to check**: Go to https://github.com/zigby33-sudo/inkflow/releases and verify tag names.
+**How to check**: Go to https://github.com/zigby33/inkflow/releases and verify tag names.
 
 #### 2. **Windows Release Assets** (Required for Windows auto-update)
 - [ ] Release contains **RELEASES** file
@@ -49,14 +49,14 @@ The auto-updater checks for new releases on GitHub but needs specific conditions
 
 #### 4. **Repository Settings**
 - [ ] Repository is **public** (GitHub releases API must be accessible)
-- [ ] Repository owner is **zigby33-sudo** (not Zigby)
+- [ ] Repository owner is **zigby33** (not Zigby)
 - [ ] Repository name is **inkflow**
 
 **How to check**:
 ```bash
 # Verify in your local repo
 git remote -v
-# Should show: origin https://github.com/zigby33-sudo/inkflow.git
+# Should show: origin https://github.com/zigby33/inkflow.git
 ```
 
 #### 5. **Release Feed URL Validation**

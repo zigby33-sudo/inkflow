@@ -1,7 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
-  // API proxies (all run in Node.js, bypassing CORS)
   mdexFetch: (path, params) => ipcRenderer.invoke('mdex-fetch', path, params),
   jikanFetch: (path) => ipcRenderer.invoke('jikan-fetch', path),
   mplusFetch: (path, params) => ipcRenderer.invoke('mplus-fetch', path, params),
@@ -9,7 +8,6 @@ contextBridge.exposeInMainWorld('electron', {
   fetchImage: (url) => ipcRenderer.invoke('fetch-image', url),
   fetchImagesBatch: (urls, concurrency) => ipcRenderer.invoke('fetch-images-batch', urls, concurrency),
 
-  // Downloads
   downloadChapter: (mangaId, chapterId, meta, pageUrls) =>
     ipcRenderer.invoke('download-chapter', mangaId, chapterId, meta, pageUrls),
   getDownloads: () => ipcRenderer.invoke('get-downloads'),
@@ -28,7 +26,6 @@ contextBridge.exposeInMainWorld('electron', {
   clearCache: () => ipcRenderer.invoke('clear-cache'),
   openDownloadsFolder: () => ipcRenderer.invoke('open-downloads-folder'),
 
-  // Database (library, progress, settings)
   dbGet: () => ipcRenderer.invoke('db-get'),
   dbSave: (db) => ipcRenderer.invoke('db-save', db),
   dbClear: () => ipcRenderer.invoke('db-clear'),
@@ -47,7 +44,6 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('update-progress', listener);
   },
 
-  // Window controls
   winMinimize: () => ipcRenderer.send('window-minimize'),
   winMaximize: () => ipcRenderer.send('window-maximize'),
   winClose: () => ipcRenderer.send('window-close'),
