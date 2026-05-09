@@ -36,22 +36,15 @@ async function init() {
   const defaultSources = {
     mangadex: { enabled: true, name: 'MangaDex' },
     mal: { enabled: true, name: 'MyAnimeList' },
-    mangaplus: { enabled: true, name: 'MangaPlus' },
-    comick: { enabled: true, name: 'Comick' }
+    mangaplus: { enabled: true, name: 'MangaPlus' }
   };
 
   if (!S.db.settings.sources) {
-    S.db.settings.sources = {
-      mangadex: { enabled: true, name: 'MangaDex' },
-      mal: { enabled: true, name: 'MyAnimeList' },
-      mangaplus: { enabled: true, name: 'MangaPlus' },
-      comick: { enabled: true, name: 'Comick' }
-    };
     S.db.settings.sources = defaultSources;
   } else {
     let changed = false;
     if (!S.db.settings.sources.mangaplus) { S.db.settings.sources.mangaplus = { enabled: true, name: 'MangaPlus' }; changed = true; }
-    if (!S.db.settings.sources.comick) { S.db.settings.sources.comick = { enabled: true, name: 'Comick' }; changed = true; }
+    if (S.db.settings.sources.comick) { delete S.db.settings.sources.comick; changed = true; }
     for (const [id, meta] of Object.entries(defaultSources)) {
       if (!S.db.settings.sources[id]) {
         S.db.settings.sources[id] = meta;
@@ -497,7 +490,6 @@ function sourceDesc(id) {
     mangadex: 'The largest free manga platform. Browse, read, and download thousands of titles.',
     mal: 'MyAnimeList scores, rankings and metadata for manga detail pages.',
     mangaplus: 'Official publisher. Browse trending Shonen/Seinen series.',
-    comick: 'High quality scans and excellent UI from Comick.io.',
   };
   return descs[id] || '';
 }
@@ -520,8 +512,6 @@ async function renderBrowse(main) {
   try {
     if (S.activeSource === 'mangaplus') {
       await renderMangaPlusBrowse(main, sourceBar);
-    } else if (S.activeSource === 'comick') {
-      await renderComickBrowse(main, sourceBar);
     } else if (S.activeSource === 'mal') {
       await renderMALBrowse(main, sourceBar);
     } else {
@@ -784,45 +774,6 @@ async function renderMangaPlusBrowse(main, sourceBar) {
   }
 }
 
-async function renderComickBrowse(main, sourceBar) {
-  try {
-    main.innerHTML = sourceBar + loading('Fetching Comick top manga...');
-    const res = await api.comickFetch('/top', { type: 'manga', limit: 30 });
-    const list = Array.isArray(res) ? res : (res.data || []);
-    const statusMap = { 1: 'Ongoing', 2: 'Completed', 3: 'Cancelled', 4: 'Hiatus' };
-
-    main.innerHTML = sourceBar + `
-      <div class="section-title"><span class="ic">🚀</span> Comick Top Manga</div>
-      <div class="manga-grid" id="comickGrid"></div>`;
-
-    const grid = document.getElementById('comickGrid');
-    grid.innerHTML = list.map(m => {
-      const cover = m.md_covers?.[0]?.b2key ? `https://meo.comick.pictures/${m.md_covers[0].b2key}` : '';
-      return `
-        <div class="manga-card" data-comick-title="${m.title.replace(/"/g, '&quot;')}" data-hid="${m.hid}">
-          <div class="manga-cover-wrap">
-            ${cover ? `<img class="manga-cover" src="${cover}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=manga-cover-ph>📖</div>'">` : '<div class="manga-cover-ph">📖</div>'}
-          </div>
-          <div class="manga-info">
-            <div class="manga-title">${m.title}</div>
-            <div class="manga-sub">${statusMap[m.status] || 'Ongoing'}</div>
-          </div>
-          <div class="manga-badge" style="background:#f97316; color:#fff;">CK</div>
-        </div>`;
-    }).join('');
-
-    grid.querySelectorAll('.manga-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const q = card.dataset.comickTitle;
-        document.getElementById('searchInput').value = q;
-        doSearch(q);
-      });
-    });
-  } catch (e) {
-    main.innerHTML = sourceBar + err('Comick API failed: ' + e.message);
-  }
-}
-
 // ── MPlus Downloader Hook ─────────────────────────────────────────
 async function downloadMplusChapter(mplusId, chapterId) {
   showToast("Initializing MangaPlus secure download...");
@@ -989,9 +940,6 @@ async function doSearch(q) {
     if (sourceId === 'mangadex') {
       html += `<div class="section-title" style="font-size:12px; margin-top:20px;">MangaDex</div>
                <div class="manga-grid" id="srGridMD"></div>`;
-    } else if (sourceId === 'comick') {
-      html += `<div class="section-title" style="font-size:12px; margin-top:20px;">Comick</div>
-               <div class="manga-grid" id="srGridComick"></div>`;
     } else if (sourceId === 'mal') {
       html += `<div class="section-title" style="font-size:12px; margin-top:20px;">MyAnimeList</div>
                <div class="manga-grid" id="srGridMAL"></div>`;
@@ -1008,27 +956,6 @@ async function doSearch(q) {
 
     if (sourceId === 'mangadex') {
       fillGrid('srGridMD', data.data);
-    } else if (sourceId === 'comick') {
-      const grid = document.getElementById('srGridComick');
-      const list = Array.isArray(data) ? data : (data.data || []);
-      grid.innerHTML = list.map(m => {
-        const cover = m.md_covers?.[0]?.b2key ? `https://meo.comick.pictures/${m.md_covers[0].b2key}` : '';
-        return `
-          <div class="manga-card" data-comick-title="${m.title.replace(/"/g, '&quot;')}" data-hid="${m.hid}">
-            <div class="manga-cover-wrap">
-              ${cover ? `<img class="manga-cover" src="${cover}" loading="lazy" onerror="this.src=''">` : '<div class="manga-cover-ph">📖</div>'}
-            </div>
-            <div class="manga-info">
-              <div class="manga-title">${m.title}</div>
-              <div class="manga-sub">Tap to search MangaDex</div>
-            </div>
-          </div>`;
-      }).join('');
-      grid.querySelectorAll('[data-comick-title]').forEach(card => {
-        card.addEventListener('click', () => {
-          doSearch(card.dataset.comickTitle);
-        });
-      });
     } else if (sourceId === 'mal') {
       const grid = document.getElementById('srGridMAL');
       grid.innerHTML = data.data.map(m => `
@@ -1487,6 +1414,30 @@ async function openReader(chIdx) {
   document.getElementById('readerMangaTitle').textContent = S.manga ? title(S.manga) : '';
   document.getElementById('pageCount').textContent = '';
 
+  // Update Sidebar Info
+  const sidebarTitle = document.getElementById('sidebarMangaTitle');
+  const sidebarCover = document.getElementById('sidebarCoverWrap');
+  const sidebarChInfo = document.getElementById('sidebarChapterInfo');
+  if (sidebarTitle) {
+    sidebarTitle.textContent = S.manga ? title(S.manga) : 'Unknown Manga';
+    sidebarTitle.style.cssText = 'overflow-wrap: anywhere; word-break: break-word; max-width: 100%; font-size: 14px;';
+  }
+  if (sidebarCover) {
+    const url = coverUrl(S.manga);
+    sidebarCover.innerHTML = url ? `<img src="${url}" style="width:100%; max-height: 260px; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); aspect-ratio: 2/3; object-fit: cover;">` : '<div class="manga-cover-ph">📖</div>';
+  }
+  if (sidebarChInfo) {
+    sidebarChInfo.innerHTML = `
+      <div style="font-family:var(--font-head); font-weight:900; color:var(--accent); font-size:15px; margin-bottom:2px; line-height:1.2; overflow-wrap: anywhere; word-break: break-word; width: 100%;">Chapter ${num}</div>
+      <div style="font-size:11px; color:var(--text2); line-height:1.3; margin-bottom:10px; font-weight:500; overflow-wrap: anywhere; word-break: break-word; width: 100%;">${ctitle || 'No chapter title'}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <span class="chip chip-blue" style="text-transform:capitalize">${S.manga?.attributes?.status || 'Ongoing'}</span>
+        <span class="chip chip-gray">${S.manga?.attributes?.contentRating || 'safe'}</span>
+        ${(S.manga?.attributes?.tags || []).slice(0, 3).map(t => `<span class="chip chip-gray" style="font-size:9px">${t.attributes.name.en}</span>`).join('')}
+      </div>
+    `;
+  }
+
   // Populate chapter select
   const chSel = document.getElementById('chapterSelect');
   chSel.innerHTML = S.chapters.map((c, i) => {
@@ -1818,12 +1769,26 @@ async function readDownloadedChapter(mid, chId) {
   const sidebarTitle = document.getElementById('sidebarMangaTitle');
   const sidebarCover = document.getElementById('sidebarCoverWrap');
   const sidebarChInfo = document.getElementById('sidebarChapterInfo');
-  if (sidebarTitle) sidebarTitle.textContent = S.db.library[mid]?.title || 'Downloaded Manga';
-  if (sidebarCover) {
-    const url = S.db.library[mid]?.cover || null;
-    sidebarCover.innerHTML = url ? `<img src="${url}">` : '📖';
+  const meta = S.db.library[mid];
+
+  if (sidebarTitle) {
+    sidebarTitle.textContent = meta?.title || 'Downloaded Manga';
+    sidebarTitle.style.cssText = 'overflow-wrap: anywhere; word-break: break-word; max-width: 100%; font-size: 14px;';
   }
-  if (sidebarChInfo) sidebarChInfo.textContent = `Chapter ${dlCh.chapter || '?'}`;
+  if (sidebarCover) {
+    const url = meta?.cover || null;
+    sidebarCover.innerHTML = url ? `<img src="${url}" style="width:100%; max-height: 260px; border-radius:8px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); aspect-ratio: 2/3; object-fit: cover;">` : '📖';
+  }
+  if (sidebarChInfo) {
+    sidebarChInfo.innerHTML = `
+      <div style="font-family:var(--font-head); font-weight:900; color:var(--accent); font-size:15px; margin-bottom:2px; line-height:1.2; overflow-wrap: anywhere; word-break: break-word; width: 100%;">Chapter ${dlCh.chapter || '?'}</div>
+      <div style="font-size:11px; color:var(--text2); line-height:1.3; margin-bottom:10px; font-weight:500; overflow-wrap: anywhere; word-break: break-word; width: 100%;">${dlCh.title || 'Offline Content'}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <span class="chip chip-green">Downloaded</span>
+        <span class="chip chip-gray" style="text-transform:capitalize">${meta?.status || 'Ongoing'}</span>
+      </div>
+    `;
+  }
 
   document.getElementById('pageCount').textContent = '';
 

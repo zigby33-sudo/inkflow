@@ -90,22 +90,6 @@ ipcMain.handle('mplus-fetch', async (_, urlPath, params = {}) => {
 });
 
 // Comick API proxy
-ipcMain.handle('comick-fetch', async (_, urlPath, params = {}) => {
-  try {
-    const baseUrl = 'https://api.comick.io';
-    const normalizedPath = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
-    const url = new URL(baseUrl + normalizedPath);
-    url.searchParams.set('tachiyomi', 'true'); // Required for access
-
-    Object.entries(params).forEach(([k, v]) => {
-      if (Array.isArray(v)) v.forEach(vi => url.searchParams.append(k, vi));
-      else url.searchParams.set(k, String(v));
-    });
-    return await apiGet(url.toString(), {
-      headers: { 'Referer': 'https://comick.io', 'User-Agent': 'Mozilla/5.0' }
-    });
-  } catch (e) { console.error('Comick Fetch Error:', e); throw e; }
-});
 
 // ─── In-memory image cache (covers & pages, max ~150 entries) ────────────────
 const imageCache = new Map();
