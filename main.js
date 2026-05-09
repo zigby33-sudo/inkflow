@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, dialog, shell } = require('electron');
-const { autoUpdater } = require('electron-updater');
+// electron-updater is NOT used — it requires electron-builder's latest.yml assets
+// which electron-forge/Squirrel never generates. We check GitHub Releases API directly.
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -278,87 +279,103 @@ ipcMain.handle('settings-save', async (_, settings) => {
 
 ipcMain.handle('get-version', () => app.getVersion());
 
-// ─── Auto Updater ─────────────────────────────────────────────────────────────
+// ─── Auto Updater (GitHub Releases API) ───────────────────────────────────────
+// electron-forge + Squirrel does NOT generate the latest.yml that electron-updater
+// requires. So we query the GitHub Releases API directly and open the browser to
+// the release page when a newer version is found.
 
-function setupAutoUpdater() {
-  // Programmatically configure the update source for GitHub.
-  // This replaces the need for a physical 'app-update.yml' file.
-  const currentVersion = app.getVersion();
-  console.log(`[AutoUpdater] Current app version: ${currentVersion}`);
-  
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'zigby33-sudo',
-    repo: 'inkflow'
-  });
-  console.log(`[AutoUpdater] Checking releases at: https://github.com/zigby33-sudo/inkflow/releases`);
+const GITHUB_OWNER = 'zigby33-sudo';
+const GITHUB_REPO  = 'inkflow';
 
-  // Allow the app to detect and install releases marked as "Pre-release" on GitHub
-  autoUpdater.allowPrerelease = true;
-  autoUpdater.allowDowngrade = false;
-
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.logger = console; // Optional: enables logging to main process stdout
-
-  autoUpdater.on('update-available', (info) => {
-    console.log(`[AutoUpdater] Update available: v${info.version}`);
-    win?.webContents.send('update-status', `Update found! v${info.version} Downloading in background...`);
-    win?.webContents.send('update-progress', 0);
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log(`[AutoUpdater] No updates available. Latest: v${info.version}`);
-    win?.webContents.send('update-status', 'Inkflow is up to date.');
-    win?.webContents.send('update-progress', null);
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater] Error:', err);
-    let message = 'Update error: ' + err.message;
-    
-    if ((err?.message || '').includes('404') || (err?.message || '').includes('No published')) {
-      message = `No published releases found. Ensure your release on GitHub is not a "Draft" and that the tag matches your version.`;
-    } else if ((err?.message || '').includes('ENOTFOUND') || (err?.message || '').includes('ETIMEDOUT')) {
-      message = 'Network error checking for updates. Check your connection.';
-    }
-    
-    win?.webContents.send('update-status', message);
-    win?.webContents.send('update-progress', null);
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    const msg = `Downloading: ${Math.round(progressObj.percent)}%`;
-    console.log(`[AutoUpdater] ${msg}`);
-    win?.webContents.send('update-status', msg);
-    win?.webContents.send('update-progress', progressObj.percent);
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log(`[AutoUpdater] Update downloaded: v${info.version}`);
-    win?.webContents.send('update-progress', 100);
-    const dialogOpts = {
-      type: 'info',
-      buttons: ['Restart', 'Later'],
-      title: 'Application Update',
-      message: `Version ${info.version} is ready!`,
-      detail: 'A new version has been downloaded. Restart the application to apply the updates now.'
-    };
-
-    dialog.showMessageBox(dialogOpts).then((returnValue) => {
-      if (returnValue.response === 0) autoUpdater.quitAndInstall(false, true);
-    });
-  });
+function semverGt(a, b) {
+  // Returns true if version string a is greater than b
+  // Strips leading 'v' and handles x.y.z
+  const parse = v => v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const [aMaj, aMin, aPat] = parse(a);
+  const [bMaj, bMin, bPat] = parse(b);
+  if (aMaj !== bMaj) return aMaj > bMaj;
+  if (aMin !== bMin) return aMin > bMin;
+  return aPat > bPat;
 }
 
-ipcMain.handle('check-for-updates', () => {
-  if (!app.isPackaged) {
-    console.log('Skipping update check in development mode.');
-    return 'Update checks are only available in packaged releases.';
-  }
+async function checkGitHubForUpdate(silent = false) {
+  const currentVersion = app.getVersion();
+  console.log(`[Updater] Checking GitHub for updates. Current: v${currentVersion}`);
+  win?.webContents.send('update-status', 'Checking for updates...');
 
-  autoUpdater.checkForUpdatesAndNotify();
-  return 'Update check initiated...';
+  try {
+    // GitHub's latest release endpoint returns the most recent non-draft,
+    // non-prerelease release — exactly what we publish via electron-forge.
+    const data = await apiGet(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+      { headers: { 'Accept': 'application/vnd.github.v3+json' } }
+    );
+
+    const latestVersion = (data.tag_name || '').replace(/^v/, '');
+    console.log(`[Updater] Latest release on GitHub: v${latestVersion}`);
+
+    if (!latestVersion) {
+      win?.webContents.send('update-status', 'Could not read release version from GitHub.');
+      win?.webContents.send('update-progress', null);
+      return;
+    }
+
+    if (semverGt(latestVersion, currentVersion)) {
+      console.log(`[Updater] Update available: v${currentVersion} → v${latestVersion}`);
+      win?.webContents.send('update-status', `Update available: v${latestVersion}`);
+      win?.webContents.send('update-progress', null);
+
+      // Prompt user to open the release page — Squirrel installers are in assets
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'info',
+        buttons: ['Download Update', 'Later'],
+        defaultId: 0,
+        title: 'Update Available',
+        message: `Inkflow v${latestVersion} is available`,
+        detail: `You have v${currentVersion}. The new version is ready to download from GitHub.\n\nRelease notes:\n${(data.body || 'No notes provided.').slice(0, 400)}`,
+      });
+
+      if (response === 0) {
+        shell.openExternal(data.html_url);
+      }
+    } else {
+      console.log(`[Updater] Already up to date (v${currentVersion})`);
+      if (!silent) {
+        win?.webContents.send('update-status', `Inkflow v${currentVersion} is up to date.`);
+      }
+      win?.webContents.send('update-progress', null);
+    }
+  } catch (err) {
+    console.error('[Updater] Error:', err);
+    let msg = 'Update check failed: ' + err.message;
+    if (err.message.includes('404')) {
+      msg = 'No published releases found on GitHub yet.';
+    } else if (err.message.includes('ENOTFOUND') || err.message.includes('ETIMEDOUT')) {
+      msg = 'Network error — check your connection.';
+    }
+    if (!silent) win?.webContents.send('update-status', msg);
+    win?.webContents.send('update-progress', null);
+  }
+}
+
+function setupAutoUpdater() {
+  const currentVersion = app.getVersion();
+  console.log(`[Updater] App version: v${currentVersion}`);
+  
+  // Check silently on startup — no "up to date" toast if already current
+  if (app.isPackaged) {
+    setTimeout(() => checkGitHubForUpdate(true), 3000);
+  } else {
+    console.log('[Updater] Skipping update check in development mode.');
+  }
+}
+
+ipcMain.handle('check-for-updates', async () => {
+  if (!app.isPackaged) {
+    return 'Update checks are only available in packaged builds.';
+  }
+  await checkGitHubForUpdate(false);
+  return 'Update check initiated.';
 });
 
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
@@ -436,13 +453,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
-  setupAutoUpdater();
-
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify();
-  } else {
-    console.log('Auto updates are disabled while running in development mode.');
-  }
+  setupAutoUpdater(); // startup check is handled inside setupAutoUpdater
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
