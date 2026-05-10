@@ -1223,6 +1223,7 @@ async function renderDetail(main) {
 
   // Build chapters HTML
   const progress = S.db.progress[m.id] || [];
+  const allRead = S.chapters.length > 0 && progress.length >= S.chapters.length;
   const chaptersHtml = S.chapters.length === 0
     ? '<div class="loading" style="color:var(--text2)">No English chapters available.</div>'
     : S.chapters.map((ch, i) => chapterRow(ch, i, m.id, progress)).join('');
@@ -1247,6 +1248,7 @@ async function renderDetail(main) {
           <button class="btn btn-primary" id="startReadBtn" ${S.chapters.length === 0 ? 'disabled' : ''}>▶ Start Reading</button>
           <button class="btn btn-outline ${inLib ? 'active' : ''}" id="libBtn">${inLib ? '★ In Library' : '☆ Add to Library'}</button>
           <button class="btn btn-green" id="dlAllBtn">↓ Download All</button>
+          <button class="btn btn-ghost" id="markAllReadBtn" style="font-size:11px;">${allRead ? '○ Mark All Unread' : '✓ Mark All Read'}</button>
           <select id="malStatusSel">
             <option value="">— Reading Status —</option>
             <option value="reading">Reading</option>
@@ -1286,6 +1288,7 @@ async function renderDetail(main) {
   document.getElementById('startReadBtn').addEventListener('click', () => openReader(0));
   document.getElementById('libBtn').addEventListener('click', () => toggleLibrary());
   document.getElementById('dlAllBtn').addEventListener('click', () => downloadAll());
+  document.getElementById('markAllReadBtn')?.addEventListener('click', () => markAllChaptersRead());
   document.getElementById('malStatusSel').addEventListener('change', e => setMalStatus(e.target.value));
 
   // Expandable description
@@ -1341,6 +1344,9 @@ function chapterRow(ch, i, mangaId, readList) {
       <div class="ch-title">${ctitle || 'Chapter ' + num}</div>
       ${isDl ? '<span class="chip chip-green">Saved</span>' : ''}
       <div class="ch-date">${date}</div>
+      <div class="ch-read-btn" data-action="toggle-read" title="${isRead ? 'Mark as unread' : 'Mark as read'}" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; color: ${isRead ? 'var(--accent)' : 'var(--text2)'}; opacity: ${isRead ? '1' : '0.4'}">
+        ${isRead ? '✓' : '○'}
+      </div>
       <div class="ch-dl-btn ${isDl ? 'downloaded' : inProgress ? 'downloading' : ''}" data-action="dl" title="${isDl ? 'Downloaded' : 'Download for offline'}">
         ${isDl ? '✓' : inProgress ? '↻' : '↓'}
       </div>
@@ -1361,6 +1367,9 @@ function bindChapterRows() {
     });
     row.querySelector('[data-action="dl"]')?.addEventListener('click', e => {
       e.stopPropagation(); downloadChapter(idx);
+    });
+    row.querySelector('[data-action="toggle-read"]')?.addEventListener('click', e => {
+      e.stopPropagation(); toggleChapterReadStatus(chId);
     });
   });
 }
@@ -2169,6 +2178,41 @@ function markRead(chId) {
   const historyEntry = { id: mid, title: titleText, cover: coverUrl(S.manga) || S.db.library[mid]?.cover, attributes: { status: S.manga?.attributes?.status || S.db.library[mid]?.status } };
   S.db.history.recent = [historyEntry, ...S.db.history.recent.filter(item => item.id !== mid)].slice(0, 24);
   api.dbSave(S.db);
+}
+
+function toggleChapterReadStatus(chId) {
+  const mid = S.manga?.id;
+  if (!mid) return;
+  if (!S.db.progress[mid]) S.db.progress[mid] = [];
+  
+  const idx = S.db.progress[mid].indexOf(chId);
+  if (idx > -1) {
+    S.db.progress[mid].splice(idx, 1);
+    showToast('Chapter marked as unread');
+  } else {
+    S.db.progress[mid].push(chId);
+    showToast('Chapter marked as read');
+    S.db.history.lastMangaId = mid;
+  }
+  api.dbSave(S.db);
+  renderDetail(document.getElementById('mainContent'));
+}
+
+function markAllChaptersRead() {
+  const mid = S.manga?.id;
+  if (!mid || !S.chapters.length) return;
+  const allIds = S.chapters.map(ch => ch.id);
+  const progress = S.db.progress[mid] || [];
+  if (progress.length >= allIds.length && allIds.length > 0) {
+    S.db.progress[mid] = [];
+    showToast('Manga marked as unread');
+  } else {
+    S.db.progress[mid] = allIds;
+    showToast('Manga marked as read');
+    S.db.history.lastMangaId = mid;
+  }
+  api.dbSave(S.db);
+  renderDetail(document.getElementById('mainContent'));
 }
 
 // ── DOWNLOADS ─────────────────────────────────────────────────────
