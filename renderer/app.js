@@ -3,9 +3,7 @@
 const api = window.electron;
 
 const CHANGELOG = [
-  { icon: '🚀', title: 'New Standalone Updater', desc: 'A dedicated maintenance utility for seamless, reliable app updates.' },
-  { icon: '📖', title: 'Reader Improvements', desc: 'Fixed layout issues where long chapter titles would overflow the screen.' },
-  { icon: '⬆️', title: 'Updater', desc: 'Made an updater app that can be launched by the main app to download and install updates, improving reliability and user experience.' }
+  { icon: '🚀', title: 'New Updater', desc: 'FINALLY found a way to auto update.' },
 ];
 
 const S = {
