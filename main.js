@@ -1,8 +1,15 @@
+// Hand-off to standalone updater if the flag is present
+if (process.argv.includes('--updater')) {
+  require('./updater/main.js');
+  return; // Prevent the rest of the main app from loading
+}
+
 const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
 const { URL, pathToFileURL } = require('url');
+const { spawn } = require('child_process');
 
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -311,10 +318,15 @@ async function checkGitHubForUpdate(silent = false) {
       win?.webContents.send('update-status', `Update available: v${latestVersion}`);
       win?.webContents.send('update-progress', null);
 
+      // Find the appropriate binary asset (e.g., Setup.exe)
+      const asset = data.assets?.find(a => a.name.endsWith('.exe'));
+
       win?.webContents.send('update-available', {
         latest: latestVersion,
         current: currentVersion,
         url: data.html_url,
+        downloadUrl: asset?.browser_download_url,
+        assetName: asset?.name,
         notes: (data.body || 'No notes provided.').slice(0, 400)
       });
 
@@ -357,6 +369,21 @@ ipcMain.handle('check-for-updates', async () => {
   }
   await checkGitHubForUpdate(false);
   return 'Update check initiated.';
+});
+
+ipcMain.handle('launch-updater', async (_, { url, assetName }) => {
+  // Use the current executable but pass the --updater flag
+  const child = spawn(process.execPath, [
+    app.getAppPath(), 
+    '--updater', 
+    `--url=${url}`, 
+    `--asset=${assetName}`
+  ], {
+    detached: true,
+    stdio: 'ignore'
+  });
+  child.unref();
+  app.quit();
 });
 
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');

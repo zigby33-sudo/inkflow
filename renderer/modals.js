@@ -71,7 +71,13 @@
         confirmText: 'Download Update',
         cancelText: 'Not Now',
       }).then((confirmed) => {
-        if (confirmed) window.electron.openExternal(info.url);
+        if (confirmed) {
+          if (info.downloadUrl) {
+            window.electron.launchUpdater({ url: info.downloadUrl, assetName: info.assetName });
+          } else {
+            window.electron.openExternal(info.url);
+          }
+        }
       });
     });
   }

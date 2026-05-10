@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electron', {
   getVersion: () => ipcRenderer.invoke('get-version'),
   settingsSave: (settings) => ipcRenderer.invoke('settings-save', settings),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  launchUpdater: (info) => ipcRenderer.invoke('launch-updater', info),
   onUpdateStatus: (cb) => {
     const listener = (_, msg) => cb(msg);
     ipcRenderer.on('update-status', listener);

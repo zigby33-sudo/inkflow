@@ -1,0 +1,11 @@
+{
+  "name": "inkflow-updater",
+  "version": "1.0.0",
+  "main": "main.js",
+  "description": "Standalone update utility for Inkflow",
+  "author": "zigby33",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^28.0.0"
+  }
+}
