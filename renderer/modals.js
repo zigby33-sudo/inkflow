@@ -120,47 +120,4 @@
     });
   }
 
-
-  /* ── Inline History Clear (replaces window.confirm in app.js) ── */
-  //
-  // app.js calls:  if (confirm('Clear all reading history?')) { ... }
-  // We patch window.confirm to intercept only that specific call
-  // and route it through our modal instead.
-  //
-  const _nativeConfirm = window.confirm.bind(window);
-
-  window.confirm = function (message) {
-    // Only intercept the history-clear prompt; let everything else through.
-    if (typeof message === 'string' && message.toLowerCase().includes('reading history')) {
-      // Can't make confirm() async, so we schedule the modal and return false
-      // synchronously — then re-run the action ourselves on confirmation.
-      showModal({
-        icon: '🗑',
-        iconClass: 'danger',
-        title: 'Clear Reading History?',
-        body: `
-          <p>Your reading history and last-read progress will be removed.</p>
-          <div class="ink-modal-warning">
-            <span class="warn-icon">⚠</span>
-            <span>This cannot be undone.</span>
-          </div>
-        `,
-        confirmText: 'Clear History',
-        cancelText:  'Keep History',
-        destructive: true,
-      }).then((confirmed) => {
-        if (!confirmed) return;
-        // Re-fire the clear logic that was gated behind confirm().
-        // app.js pattern: S.db.history = …; api.dbSave(S.db); renderHistory(main); showToast(…)
-        // We emit a synthetic click on the clear button so all that code runs normally.
-        document.getElementById('clearHistoryBtn')?.click();
-        // Fallback: dispatch a custom event app.js can also listen to.
-        document.dispatchEvent(new CustomEvent('inkflow:clearHistory'));
-      });
-
-      return false; // prevent the original synchronous confirm path
-    }
-
-    return _nativeConfirm(message);
-  };
 })();

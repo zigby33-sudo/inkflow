@@ -14,7 +14,6 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'inkflow', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
 
-// ─── Storage paths ────────────────────────────────────────────────────────────
 const USER_DATA = app.getPath('userData');
 const DOWNLOADS_DIR = path.join(USER_DATA, 'downloads');
 const DB_PATH = path.join(USER_DATA, 'db.json');
@@ -26,7 +25,6 @@ function loadDB() {
 }
 function saveDB(db) { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); }
 
-// ─── HTTP helpers ─────────────────────────────────────────────────────────────
 async function nodeFetch(url, options = {}) {
   const response = await net.fetch(url, {
     method: options.method || 'GET',
@@ -53,7 +51,6 @@ async function apiGet(url, options = {}) {
   return JSON.parse(res.body.toString('utf8'));
 }
 
-// ─── IPC Handlers ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('mdex-fetch', async (_, urlPath, params) => {
   const base = 'https://api.mangadex.org';
@@ -97,7 +94,6 @@ ipcMain.handle('comick-fetch', async (_, urlPath, params) => {
   return apiGet(url.toString());
 });
 
-// ─── In-memory image cache ──────────────────────────────────────────────────
 const imageCache = new Map();
 const IMAGE_CACHE_MAX = 200;
 function cacheSet(url, value) {
@@ -264,12 +260,10 @@ ipcMain.handle('open-external', (_, url) => {
   shell.openExternal(url);
 });
 
-// Triggered by the UI to show a custom confirmation for history/library clearing
 ipcMain.on('request-db-clear', () => {
   win?.webContents.send('show-db-clear-confirmation');
 });
 
-// ─── Auto Updater ─────────────────────────────────────────────────────────────
 
 const GITHUB_OWNER = 'zigby33';
 const GITHUB_REPO  = 'inkflow';
@@ -364,11 +358,10 @@ ipcMain.handle('check-for-updates', async () => {
 
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 
-// ─── Window ───────────────────────────────────────────────────────────────────
 let win;
 function createWindow() {
   win = new BrowserWindow({
-    width: 1280, height: 820,
+    width: 1600, height: 820,
     minWidth: 900, minHeight: 600,
     show: false,
     backgroundColor: '#00000000',

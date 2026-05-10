@@ -425,23 +425,30 @@ function renderHistory(main) {
   clearBtn.style.cssText = 'font-size:11px;margin-top:16px;';
   clearBtn.textContent = '✕ Clear History';
 
-  const doClearHistory = () => {
-    S.db.history = { recent: [], lastMangaId: null };
-    api.dbSave(S.db);
-    renderHistory(main);
-    showToast('History cleared');
-  };
+  clearBtn.addEventListener('click', async () => {
+    const confirmed = await window.inkModal({
+      icon: '🗑',
+      iconClass: 'danger',
+      title: 'Clear Reading History?',
+      body: `
+        <p>Your reading history and last-read progress will be removed.</p>
+        <div class="ink-modal-warning">
+          <span class="warn-icon">⚠</span>
+          <span>This action cannot be undone.</span>
+        </div>
+      `,
+      confirmText: 'Clear History',
+      cancelText: 'Keep History',
+      destructive: true,
+    });
 
-  clearBtn.addEventListener('click', () => {
-    // window.confirm is patched by modals.js to show a custom modal.
-    // It returns false synchronously; modals.js fires inkflow:clearHistory on confirm.
-    if (confirm('Clear all reading history?')) {
-      doClearHistory();
+    if (confirmed) {
+      S.db.history = { recent: [], lastMangaId: null };
+      api.dbSave(S.db);
+      renderHistory(main);
+      showToast('History cleared');
     }
   });
-
-  // Fired by modals.js when the user confirms through the custom modal.
-  document.addEventListener('inkflow:clearHistory', doClearHistory);
 
   main.appendChild(clearBtn);
 }
@@ -2198,12 +2205,26 @@ function toggleChapterReadStatus(chId) {
   renderDetail(document.getElementById('mainContent'));
 }
 
-function markAllChaptersRead() {
+async function markAllChaptersRead() {
   const mid = S.manga?.id;
   if (!mid || !S.chapters.length) return;
   const allIds = S.chapters.map(ch => ch.id);
   const progress = S.db.progress[mid] || [];
-  if (progress.length >= allIds.length && allIds.length > 0) {
+  const isMarkingUnread = progress.length >= allIds.length && allIds.length > 0;
+
+  const confirmed = await window.inkModal({
+    title: isMarkingUnread ? 'Mark all unread?' : 'Mark all read?',
+    body: isMarkingUnread 
+      ? `<p>Do you want to mark every chapter of <strong>${title(S.manga)}</strong> as unread?</p>` 
+      : `<p>Do you want to mark all <strong>${allIds.length}</strong> chapters as read?</p>`,
+    icon: isMarkingUnread ? '○' : '✓',
+    confirmText: isMarkingUnread ? 'Mark Unread' : 'Mark All Read',
+    destructive: isMarkingUnread,
+  });
+
+  if (!confirmed) return;
+
+  if (isMarkingUnread) {
     S.db.progress[mid] = [];
     showToast('Manga marked as unread');
   } else {
