@@ -29,7 +29,7 @@ async function nodeFetch(url, options = {}) {
   const response = await net.fetch(url, {
     method: options.method || 'GET',
     headers: {
-      'User-Agent': 'Inkflow/1.4.0 (Manga Reader)',
+      'User-Agent': `Inkflow/${app.getVersion()} (Manga Reader)`,
       'Accept': 'application/json',
       ...options.headers
     },
@@ -282,10 +282,15 @@ async function checkGitHubForUpdate(silent = false) {
   console.log(`[Updater] Checking GitHub for updates. Current: v${currentVersion}`);
   win?.webContents.send('update-status', 'Checking for updates...');
 
+  const headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  }
+
   try {
     const data = await apiGet(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-      { headers: { 'Accept': 'application/vnd.github.v3+json' } }
+      { headers }
     );
 
     const latestVersion = (data.tag_name || '').replace(/^v/, '');

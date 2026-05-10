@@ -4,6 +4,8 @@ const api = window.electron;
 
 const CHANGELOG = [
   { icon: '🔔', title: 'Custom modals', desc: 'Replaced the windows dialogue for updates and history clearing' },
+  { icon: '🐛', title: 'Bug fixes and performance improvements', desc: 'Fixed a bug which hindered page loading' },
+  { icon: '📌', title: 'Mark as read', desc: 'Added option to mark manga and individual chapters as read' }
 ];
 
 const S = {
@@ -1468,13 +1470,12 @@ function renderLibrary(main) {
       <div class="tabs" style="margin:0">
         ${categories.map(c => `<button class="tab ${activeCat === c.id ? 'active' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}
       </div>
-      <input type="text" id="libSearchInput" class="chapter-search-input" style="width:200px; margin:0; font-size:11px;" placeholder="Search your library..." value="${libSearch}">
       <div style="display:flex; gap:10px; align-items:center;">
         <select id="libSortSelect" class="reader-select" style="width:auto; font-size:11px; margin:0;">
           <option value="added" ${activeSort === 'added' ? 'selected' : ''}>Recently Added</option>
           <option value="alpha" ${activeSort === 'alpha' ? 'selected' : ''}>Alphabetical</option>
         </select>
-        <input type="text" id="libSearchInput" class="chapter-search-input" style="width:180px; margin:0; font-size:11px;" placeholder="Search..." value="${libSearch}">
+        <input type="text" id="libSearchInput" class="chapter-search-input" style="width:180px; margin:0; font-size:11px;" placeholder="Search library..." value="${libSearch}">
       </div>
     </div>
     <div class="manga-grid" id="libGrid"></div>`;
