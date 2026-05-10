@@ -320,6 +320,7 @@ async function loadOnlineChapterPages(pageUrls, readerPages, readerLoading, load
   }
 
   const loadOrder = Array.from(loadIndexes).sort((a, b) => a - b);
+  loadOrder.forEach(i => readerState.pending.add(i));
   let loadedCount = 0;
   const unsubProgress = api.onBatchImageProgress(({ index, total }) => {
     loadedCount++;
@@ -332,6 +333,7 @@ async function loadOnlineChapterPages(pageUrls, readerPages, readerLoading, load
 
   const results = await api.fetchImagesBatch(loadOrder.map(i => pageUrls[i]), 5);
   if (unsubProgress) unsubProgress();
+  loadOrder.forEach(i => readerState.pending.delete(i));
 
   await Promise.all(results.map(async (data, idx) => {
     const pageIndex = loadOrder[idx];
@@ -1611,6 +1613,7 @@ const readerState = {
   pages: [],
   urls: [],
   loaded: new Set(),
+  pending: new Set(),
   total: 0,
   currentPage: 0,
   isOffline: false,
@@ -1776,13 +1779,13 @@ function renderAllPages(readerPages) {
     const src = readerState.pages[readerState.currentPage];
     readerPages.innerHTML = src
       ? `<img class="reader-page active" src="${src}" data-page="${readerState.currentPage}" style="${styleStr}; transition: opacity 0.2s ease-in-out;" onwheel="handleReaderWheel(event)" ontouchstart="handleTouchStart(event)" ontouchend="handleTouchEnd(event)" onmousedown="handleMouseDown(event)">`
-      : `<div class="reader-page-ph">Loading page ${readerState.currentPage + 1}...</div>`;
+      : `<div class="reader-page-ph" data-page="${readerState.currentPage}">Loading page ${readerState.currentPage + 1}...</div>`;
   } else {
     readerPages.innerHTML = readerState.pages.map((src, i) => {
       if (src) {
         return `<img class="reader-page ${i === readerState.currentPage ? 'active' : ''}" src="${src}" data-page="${i}" style="${styleStr}; transition: opacity 0.2s ease-in-out;" onwheel="handleReaderWheel(event)" ontouchstart="handleTouchStart(event)" ontouchend="handleTouchEnd(event)" onmousedown="handleMouseDown(event)">`;
       }
-      return `<div class="reader-page-ph">Loading page ${i + 1}...</div>`;
+      return `<div class="reader-page-ph" data-page="${i}">Loading page ${i + 1}...</div>`;
     }).join('');
   }
   
@@ -1803,30 +1806,52 @@ async function preloadNextPages() {
   const isRTL = readerState.direction === 'rtl';
   const lookahead = Math.max(0, Number(readerState.preloadCount || 3));
   
-  // Preload in the direction the user is reading
-  let rangesToPreload = [];
-  if (isRTL) {
-    // RTL: preload backwards
-    const start = Math.max(0, readerState.currentPage - 1);
-    const end = Math.max(0, readerState.currentPage - lookahead);
-    for (let i = start; i >= end; i--) rangesToPreload.push(i);
-  } else {
-    // LTR: preload forwards
-    const start = readerState.currentPage + 1;
-    const end = Math.min(readerState.total, start + lookahead);
-    for (let i = start; i < end; i++) rangesToPreload.push(i);
+  // Priority set: current page first, then subsequent pages
+  let targets = new Set();
+  if (!readerState.loaded.has(readerState.currentPage) && !readerState.pending.has(readerState.currentPage)) {
+    targets.add(readerState.currentPage);
   }
-  
-  if (lookahead === 0) return;
-  for (const i of rangesToPreload) {
-    if ((!readerState.loaded.has(i) || !readerState.pages[i]) && readerState.urls[i]) {
-      try {
-        const data = await api.fetchImage(readerState.urls[i]);
-        readerState.pages[i] = readerState.imageQuality === 'data-saver' ? await compressDataUrl(data) : data;
-        readerState.loaded.add(i);
-      } catch {}
+
+  if (isRTL) {
+    for (let i = 1; i <= lookahead; i++) {
+      const idx = readerState.currentPage - i;
+      if (idx >= 0 && !readerState.loaded.has(idx) && !readerState.pending.has(idx)) targets.add(idx);
+    }
+  } else {
+    for (let i = 1; i <= lookahead; i++) {
+      const idx = readerState.currentPage + i;
+      if (idx < readerState.total && !readerState.loaded.has(idx) && !readerState.pending.has(idx)) targets.add(idx);
     }
   }
+  
+  targets.forEach(i => {
+    if (!readerState.urls[i]) return;
+    readerState.pending.add(i);
+    
+    api.fetchImage(readerState.urls[i]).then(async data => {
+      const final = readerState.imageQuality === 'data-saver' ? await compressDataUrl(data) : data;
+      readerState.pages[i] = final;
+      readerState.loaded.add(i);
+      readerState.pending.delete(i);
+      
+      // Swap placeholder for real image if it's currently in the DOM
+      const ph = document.querySelector(`.reader-page-ph[data-page="${i}"]`);
+      if (ph) {
+        const img = document.createElement('img');
+        img.className = `reader-page ${i === readerState.currentPage ? 'active' : ''}`;
+        img.src = final;
+        img.dataset.page = i;
+        img.style.cssText = getPageStyleString();
+        img.setAttribute('onwheel', 'handleReaderWheel(event)');
+        img.setAttribute('ontouchstart', 'handleTouchStart(event)');
+        img.setAttribute('ontouchend', 'handleTouchEnd(event)');
+        img.setAttribute('onmousedown', 'handleMouseDown(event)');
+        ph.replaceWith(img);
+      }
+    }).catch(() => {
+      readerState.pending.delete(i);
+    });
+  });
 }
 
 function turnPage(dir) {
