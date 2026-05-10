@@ -1,6 +1,6 @@
 {
   "name": "inkflow",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "A high-performance manga reader with offline support.",
   "productName": "Inkflow",
   "main": "main.js",
