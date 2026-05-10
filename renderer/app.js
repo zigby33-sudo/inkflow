@@ -3,9 +3,7 @@
 const api = window.electron;
 
 const CHANGELOG = [
-  { icon: '✨', title: 'Performance Boost', desc: 'Optimized image loading and internal caching for smoother scrolling' },
-  { icon: '⌨️', title: 'Global Shortcuts', desc: 'Press "/" anywhere to search, or use "H" to toggle the reader UI' },
-  { icon: '🗑️', title: 'History Management', desc: 'Ability to remove individual items from your reading history' }
+  { icon: '🌠', title: 'UI Overhaul', desc: 'Refreshed UI for better user experience' }
 ];
 
 const S = {
@@ -204,17 +202,62 @@ function applyFonts() {
   style.id = 'inkflow-fonts';
   style.textContent = `
     :root {
-      /* Modern system font stacks for better readability */
-      --font-head: "Inter", "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
-      --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-      --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", "SFMono-Regular", "Consolas", monospace;
+      --font-head: "Inter Display", "Segoe UI Variable Display", sans-serif;
+      --font-body: "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 10px;
+      --shadow-soft: 0 10px 40px -10px rgba(0,0,0,0.4);
+      --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     body {
       font-family: var(--font-body);
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      letter-spacing: -0.01em;
     }
+    #mainContent { padding: 30px 40px; }
+    .section-title { font-family: var(--font-head); font-weight: 900; font-size: 28px; letter-spacing: -0.5px; margin-bottom: 25px; display: flex; align-items: center; gap: 12px; }
+    .section-title .ic { font-size: 24px; color: var(--accent); }
+    .manga-card { 
+      background: var(--bg2); 
+      border-radius: var(--radius-md); 
+      border: 1px solid var(--glass-border); 
+      padding: 12px; 
+      transition: all var(--transition);
+      cursor: pointer;
+      position: relative;
+    }
+    .manga-card:hover { 
+      transform: translateY(-8px) scale(1.02); 
+      border-color: var(--accent); 
+      box-shadow: var(--shadow-soft); 
+      background: var(--bg3);
+    }
+    .manga-cover-wrap { border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
+    .manga-cover { aspect-ratio: 2/3; object-fit: cover; width: 100%; transition: transform 0.6s ease; }
+    .manga-card:hover .manga-cover { transform: scale(1.05); }
+    .btn { 
+      padding: 10px 20px; 
+      border-radius: var(--radius-sm); 
+      font-weight: 700; 
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      transition: all var(--transition);
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 15px -5px var(--accent); }
+    .btn-primary:hover { filter: brightness(1.2); box-shadow: 0 8px 25px -5px var(--accent); transform: translateY(-1px); }
+    .genre-chip { padding: 8px 18px; border-radius: var(--radius-lg); font-size: 12px; font-weight: 600; background: var(--bg2); border: 1px solid var(--glass-border); transition: all var(--transition); }
+    .genre-chip:hover { border-color: var(--accent); color: var(--text1); }
+    .genre-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .hero-continue { padding: 30px; background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); backdrop-filter: blur(10px); border-radius: var(--radius-lg); border: 1px solid var(--glass-border); margin-bottom: 40px; display: flex; align-items: center; gap: 25px; transition: border-color var(--transition); }
+    .hero-continue:hover { border-color: var(--accent); }
+    .hero-thumb { width: 100px; height: 140px; border-radius: var(--radius-sm); box-shadow: 0 8px 20px rgba(0,0,0,0.4); object-fit: cover; }
   `;
   document.head.appendChild(style);
 }

@@ -364,8 +364,8 @@ ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'li
 let win;
 function createWindow() {
   win = new BrowserWindow({
-    width: 1600, height: 820,
-    minWidth: 900, minHeight: 600,
+    width: 1400, height: 900,
+    minWidth: 1000, minHeight: 700,
     show: false,
     backgroundColor: '#00000000',
     transparent: process.platform !== 'linux',

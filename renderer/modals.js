@@ -13,15 +13,15 @@
 
   function showModal(options = {}) {
     iconEl.textContent  = options.icon || '';
-    iconEl.className    = 'ink-modal-icon ' + (options.iconClass || '');
+    iconEl.className    = 'ink-modal-icon ' + (options.iconClass || '') + ' redesigned-icon';
     iconEl.style.display = options.icon ? 'flex' : 'none';
 
     titleEl.textContent = options.title || '';
     bodyEl.innerHTML    = options.body  || '';
 
     confirmBtn.textContent = options.confirmText || 'Confirm';
-    confirmBtn.className   = 'ink-modal-btn ink-modal-confirm ' +
-      (options.destructive ? 'destructive' : 'primary');
+    confirmBtn.className   = 'btn ink-modal-confirm ' +
+      (options.destructive ? 'destructive' : 'btn-primary');
 
     cancelBtn.textContent  = options.cancelText || 'Cancel';
     cancelBtn.style.display = options.hideCancelBtn ? 'none' : '';
