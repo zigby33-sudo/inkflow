@@ -3,7 +3,9 @@
 const api = window.electron;
 
 const CHANGELOG = [
-  { icon: '🌠', title: 'UI Overhaul', desc: 'Refreshed UI for better user experience' }
+  { icon: '🚀', title: 'New Standalone Updater', desc: 'A dedicated maintenance utility for seamless, reliable app updates.' },
+  { icon: '📖', title: 'Reader Improvements', desc: 'Fixed layout issues where long chapter titles would overflow the screen.' },
+  { icon: '⬆️', title: 'Updater', desc: 'Made an updater app that can be launched by the main app to download and install updates, improving reliability and user experience.' }
 ];
 
 const S = {
@@ -1747,7 +1749,7 @@ async function openReader(chIdx) {
   const sidebarChInfo = document.getElementById('sidebarChapterInfo');
   if (sidebarTitle) {
     sidebarTitle.textContent = S.manga ? title(S.manga) : 'Unknown Manga';
-    sidebarTitle.style.cssText = 'overflow-wrap: anywhere; word-break: break-word; max-width: 100%; font-size: 14px;';
+    sidebarTitle.style.fontSize = '14px';
   }
   if (sidebarCover) {
     const url = coverUrl(S.manga);
@@ -1755,8 +1757,8 @@ async function openReader(chIdx) {
   }
   if (sidebarChInfo) {
     sidebarChInfo.innerHTML = `
-      <div style="font-family:var(--font-head); font-weight:900; color:var(--accent); font-size:15px; margin-bottom:2px; line-height:1.2; overflow-wrap: anywhere; word-break: break-word; width: 100%;">Chapter ${num}</div>
-      <div style="font-size:11px; color:var(--text2); line-height:1.3; margin-bottom:10px; font-weight:500; overflow-wrap: anywhere; word-break: break-word; width: 100%;">${ctitle || 'No chapter title'}</div>
+      <div style="font-family:var(--font-head); font-weight:900; color:var(--accent); font-size:15px; margin-bottom:2px; line-height:1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">Chapter ${num}</div>
+      <div style="font-size:11px; color:var(--text2); line-height:1.3; margin-bottom:10px; font-weight:500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${ctitle || 'No chapter title'}</div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
         <span class="chip chip-blue" style="text-transform:capitalize">${S.manga?.attributes?.status || 'Ongoing'}</span>
         <span class="chip chip-gray">${S.manga?.attributes?.contentRating || 'safe'}</span>

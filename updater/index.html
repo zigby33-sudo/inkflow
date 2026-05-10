@@ -3,9 +3,9 @@
 <head>
   <style>
     body {
-      background: #0a0a0a;
+      background: linear-gradient(135deg, #2a0a0a 0%, #050505 100%);
       color: #e0e0e0;
-      font-family: "Inter", system-ui, sans-serif;
+      font-family: "Segoe UI", "Inter", system-ui, sans-serif;
       margin: 0;
       display: flex;
       flex-direction: column;
@@ -13,22 +13,52 @@
       justify-content: center;
       height: 100vh;
       overflow: hidden;
-      border: 1px solid #333;
+      border: 1px solid #522;
+      box-sizing: border-box;
       -webkit-app-region: drag;
     }
-    .container { text-align: center; width: 85%; -webkit-app-region: no-drag; }
-    h2 { margin-bottom: 15px; font-weight: 700; color: #4a90e2; font-size: 18px; }
-    #status { font-size: 12px; color: #888; margin-bottom: 12px; height: 1.2em; }
-    .progress-bg { background: #222; height: 8px; border-radius: 4px; width: 100%; overflow: hidden; }
-    #progress-fill { background: #4a90e2; height: 100%; width: 0%; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(74, 144, 226, 0.5); }
+    .container { 
+      text-align: center; 
+      width: 85%; 
+      -webkit-app-region: no-drag; 
+      animation: fadeInScale 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes fadeInScale { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    
+    .update-icon {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 12px;
+      display: inline-block;
+      object-fit: contain;
+      animation: logoPulse 2s infinite ease-in-out;
+    }
+    
+    @keyframes logoPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    
+    h2 { margin: 0 0 10px; font-weight: 800; color: #ef4444; font-size: 22px; letter-spacing: -0.5px; }
+    #status { font-size: 13px; color: #888; margin-bottom: 24px; height: 1.2em; font-weight: 500; }
+    
+    .progress-bg { background: rgba(255,255,255,0.03); height: 4px; border-radius: 10px; width: 100%; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+    #progress-fill { 
+      background: linear-gradient(90deg, #ef4444, #ff7b7b); 
+      height: 100%; width: 0%; 
+      transition: width 0.5s cubic-bezier(0.1, 0.8, 0.1, 1); 
+    }
+    
     #error-msg { color: #ef4444; font-size: 12px; margin-top: 15px; display: none; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 4px; }
-    .close-btn { position: absolute; top: 12px; right: 12px; cursor: pointer; color: #555; -webkit-app-region: no-drag; font-size: 14px; }
-    .close-btn:hover { color: white; }
+    .close-btn { 
+      position: absolute; top: 12px; right: 12px; cursor: pointer; color: #555; 
+      -webkit-app-region: no-drag; font-size: 14px; transition: color 0.2s;
+      width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    }
+    .close-btn:hover { color: white; background: rgba(255,255,255,0.05); border-radius: 50%; }
   </style>
 </head>
 <body>
   <div class="close-btn" onclick="window.ipcRenderer.send('close-updater')">✕</div>
   <div class="container">
+    <img src="../assets/installing.gif" class="update-icon" alt="Installing...">
     <h2>Updating Inkflow</h2>
     <div id="status">Connecting to server...</div>
     <div class="progress-bg">

@@ -93,6 +93,17 @@
     border-bottom: 1px solid var(--glass-border);
     margin-top: 32px; /* Push down to clear the frameless titlebar */
     z-index: 30; /* Ensure it stays above the loading overlay (z-index 20) */
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .reader-topbar-manga, .reader-topbar-chapter {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
   .reader-panel {
     background: rgba(10, 10, 15, 0.9) !important;
