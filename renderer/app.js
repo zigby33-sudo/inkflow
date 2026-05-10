@@ -3,9 +3,9 @@
 const api = window.electron;
 
 const CHANGELOG = [
-  { icon: '🔔', title: 'Custom modals', desc: 'Replaced the windows dialogue for updates and history clearing' },
-  { icon: '🐛', title: 'Bug fixes and performance improvements', desc: 'Fixed a bug which hindered page loading' },
-  { icon: '📌', title: 'Mark as read', desc: 'Added option to mark manga and individual chapters as read' }
+  { icon: '✨', title: 'Performance Boost', desc: 'Optimized image loading and internal caching for smoother scrolling' },
+  { icon: '⌨️', title: 'Global Shortcuts', desc: 'Press "/" anywhere to search, or use "H" to toggle the reader UI' },
+  { icon: '🗑️', title: 'History Management', desc: 'Ability to remove individual items from your reading history' }
 ];
 
 const S = {
@@ -50,10 +50,15 @@ async function init() {
     S.db.settings.sources = defaultSources;
   } else {
     let changed = false;
-    if (!S.db.settings.sources.mangaplus) { S.db.settings.sources.mangaplus = { enabled: true, name: 'MangaPlus' }; changed = true; }
     for (const [id, meta] of Object.entries(defaultSources)) {
       if (!S.db.settings.sources[id]) {
         S.db.settings.sources[id] = meta;
+        changed = true;
+      }
+    }
+    for (const id of Object.keys(S.db.settings.sources)) {
+      if (!defaultSources[id]) {
+        delete S.db.settings.sources[id];
         changed = true;
       }
     }
@@ -78,6 +83,14 @@ async function init() {
   });
   searchInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(e.target.value.trim()); }
+  });
+
+  // QOL: Global search shortcut (/)
+  window.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      searchInput.focus();
+    }
   });
 
   document.getElementById('closeReaderBtn').addEventListener('click', closeReader);
@@ -228,6 +241,8 @@ function navigate(view, data = null) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const nb = document.querySelector(`.nav-btn[data-view="${view === 'detail' ? 'home' : view}"]`);
   if (nb) nb.classList.add('active');
+  // QOL: Always scroll to top on navigation
+  document.getElementById('mainContent').scrollTo(0, 0);
   render();
 }
 
@@ -407,11 +422,23 @@ function renderHistory(main) {
           <div class="manga-sub">${readCount > 0 ? `${readCount} chapter${readCount !== 1 ? 's' : ''} read` : m.attributes?.status || ''}</div>
         </div>
         ${!!S.db.library[m.id] ? '<div class="manga-badge">★</div>' : ''}
+        <div class="manga-card-remove" data-remove-hist="${m.id}" title="Remove from history">✕</div>
       </div>`;
   }).join('');
 
   grid.querySelectorAll('[data-manga-id]').forEach(c => {
     c.addEventListener('click', () => openManga(c.dataset.mangaId));
+  });
+
+  grid.querySelectorAll('[data-remove-hist]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const mid = btn.dataset.removeHist;
+      S.db.history.recent = S.db.history.recent.filter(x => x.id !== mid);
+      api.dbSave(S.db);
+      renderHistory(main);
+      showToast('Removed from history');
+    });
   });
 
   // Hero continue button

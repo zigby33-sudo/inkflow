@@ -11,20 +11,6 @@
 
   let resolveCallback = null;
 
-  /**
-   * Show the modal. Returns a Promise that resolves true (confirm) or false (cancel).
-   *
-   * options: {
-   *   title        : string
-   *   body         : string (HTML)
-   *   icon         : string (emoji / HTML entity)
-   *   iconClass    : 'update' | 'danger'
-   *   confirmText  : string
-   *   cancelText   : string
-   *   destructive  : boolean
-   *   hideCancelBtn: boolean
-   * }
-   */
   function showModal(options = {}) {
     iconEl.textContent  = options.icon || '';
     iconEl.className    = 'ink-modal-icon ' + (options.iconClass || '');
@@ -35,7 +21,7 @@
 
     confirmBtn.textContent = options.confirmText || 'Confirm';
     confirmBtn.className   = 'ink-modal-btn ink-modal-confirm ' +
-                              (options.destructive ? 'destructive' : 'primary');
+      (options.destructive ? 'destructive' : 'primary');
 
     cancelBtn.textContent  = options.cancelText || 'Cancel';
     cancelBtn.style.display = options.hideCancelBtn ? 'none' : '';
@@ -58,23 +44,19 @@
   confirmBtn.addEventListener('click', () => hideModal(true));
   cancelBtn.addEventListener('click',  () => hideModal(false));
 
-  // Dismiss on backdrop click
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) hideModal(false);
   });
 
-  // Keyboard: Escape = cancel, Enter = confirm
   document.addEventListener('keydown', (e) => {
     if (!overlay.classList.contains('active')) return;
     if (e.key === 'Escape') hideModal(false);
     if (e.key === 'Enter')  hideModal(true);
   });
 
-  /* ── Expose globally so app.js can use it ── */
   window.inkModal = showModal;
 
 
-  /* ── Update Available ───────────────────────────────────────── */
   if (window.electron?.onUpdateAvailable) {
     window.electron.onUpdateAvailable((info) => {
       showModal({
@@ -95,7 +77,6 @@
   }
 
 
-  /* ── DB / Library Clear (triggered from main process) ───────── */
   if (window.electron?.onDbClearRequest) {
     window.electron.onDbClearRequest(() => {
       showModal({

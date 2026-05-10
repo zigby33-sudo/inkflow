@@ -2,8 +2,6 @@ const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, shell 
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
-const https = require('https');
-const http = require('http');
 const { URL, pathToFileURL } = require('url');
 
 if (require('electron-squirrel-startup')) {
