@@ -1,6 +1,6 @@
 export const CHANGELOG = [
-  { icon: '📁', title: 'Renderer layout', desc: 'UI code split under renderer/js/ so each area is easier to find.' },
-  { icon: '🔧', title: 'Search from browse', desc: 'MAL / MangaPlus cards jump to search again (regression fix).' },
+  // { icon: '', title: 'test', desc: 'test' },
+  { icon: '📁', title: 'Importing', desc: 'Added the ability to import manga from either a folder or an archive!' }
 ];
 
 export const GENRE_TAGS = [
