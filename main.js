@@ -57,7 +57,12 @@ async function apiGet(url, options = {}) {
 }
 
 
+// Ensure Electron globals exist when this file is executed in the real app.
+// (A plain node require would fail; that’s expected.)
+// In the renderer/import flow we only use Electron runtime.
+
 ipcMain.handle('mdex-fetch', async (_, urlPath, params) => {
+
   const base = 'https://api.mangadex.org';
   const url = new URL(base + urlPath);
   if (params) {
@@ -268,6 +273,241 @@ ipcMain.handle('open-external', (_, url) => {
 ipcMain.on('request-db-clear', () => {
   win?.webContents.send('show-db-clear-confirmation');
 });
+
+// ──────────────────────────────────────────────────────────────
+// Import manga from local computer (folder or CBZ/ZIP)
+// ──────────────────────────────────────────────────────────────
+
+const IMPORT_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+
+function stableMangaIdFromTitle(titleStr) {
+  // Deterministic id so importing same title twice doesn't create duplicates.
+  // Uses a simple hash to avoid pulling extra deps.
+  const s = String(titleStr || 'untitled').trim().toLowerCase();
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // Make it look UUID-ish length.
+  const x = (h >>> 0).toString(16).padStart(8, '0');
+  return `local-${x}`;
+}
+
+function sanitizeSegment(seg) {
+  return String(seg || '').trim().replace(/[\\/:*?"<>|\x00-\x1F]/g, '_');
+}
+
+function naturalSort(a, b) {
+  // Natural compare for filenames like page_2.jpg
+  const ax = String(a).toLowerCase();
+  const bx = String(b).toLowerCase();
+  const rx = /\d+|\D+/g;
+  const as = ax.match(rx) || [ax];
+  const bs = bx.match(rx) || [bx];
+  const len = Math.max(as.length, bs.length);
+  for (let i = 0; i < len; i++) {
+    const av = as[i];
+    const bv = bs[i];
+    if (av === undefined) return -1;
+    if (bv === undefined) return 1;
+    const an = /^\d+$/.test(av);
+    const bn = /^\d+$/.test(bv);
+    if (an && bn) {
+      const diff = parseInt(av, 10) - parseInt(bv, 10);
+      if (diff !== 0) return diff;
+    } else {
+      if (av !== bv) return av < bv ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+async function copyDirContentsForChapter({ srcDir, destChapterDir }) {
+  await fsp.mkdir(destChapterDir, { recursive: true });
+  const entries = await fsp.readdir(srcDir, { withFileTypes: true });
+
+  const imageEntries = entries
+    .filter(e => e.isFile())
+    .map(e => e.name)
+    .filter(name => {
+      const ext = path.extname(name).toLowerCase();
+      return IMPORT_IMAGE_EXTS.has(ext);
+    })
+    .sort(naturalSort);
+
+  const pages = [];
+  let pageIdx = 0;
+  for (const fileName of imageEntries) {
+    const srcPath = path.join(srcDir, fileName);
+    const ext = path.extname(fileName).toLowerCase();
+    const destPath = path.join(destChapterDir, `page_${String(pageIdx).padStart(3, '0')}${ext}`);
+    await fsp.copyFile(srcPath, destPath);
+    pages.push(destPath);
+    pageIdx++;
+  }
+
+  return pages;
+}
+
+async function importFromFolder(folderPath) {
+  const rootEntries = await fsp.readdir(folderPath, { withFileTypes: true });
+  const subdirs = rootEntries.filter(e => e.isDirectory()).map(e => e.name);
+
+  // Prefer explicit meta.json/title.txt if present at root.
+  let titleStr = path.basename(folderPath);
+  const metaPath = path.join(folderPath, 'meta.json');
+  const titleTxt = path.join(folderPath, 'title.txt');
+  try {
+    if (fs.existsSync(metaPath)) {
+      const raw = await fsp.readFile(metaPath, 'utf8');
+      const meta = JSON.parse(raw);
+      titleStr = meta?.title || meta?.manga?.title || titleStr;
+    } else if (fs.existsSync(titleTxt)) {
+      titleStr = (await fsp.readFile(titleTxt, 'utf8')).split(/\r?\n/)[0].trim() || titleStr;
+    }
+  } catch { /* ignore */ }
+
+  const mangaId = stableMangaIdFromTitle(titleStr);
+  const mangaDir = path.join(DOWNLOADS_DIR, mangaId);
+  await fsp.mkdir(mangaDir, { recursive: true });
+
+  // Determine chapters:
+  // - If there are subfolders, each subfolder becomes a chapter.
+  // - Else, treat root as single chapter.
+  const chapterCandidates = subdirs.length > 0 ? subdirs : ['Chapter_1'];
+
+  let chapterIdx = 0;
+  for (const chapFolder of chapterCandidates) {
+    const chapterLabel = chapFolder === 'Chapter_1' ? '1' : sanitizeSegment(chapFolder);
+    const chapterId = `${mangaId}-ch-${String(chapterIdx + 1).padStart(3, '0')}`;
+    const destChapterDir = path.join(mangaDir, chapterId);
+
+    const srcDir = subdirs.length > 0 ? path.join(folderPath, chapFolder) : folderPath;
+    const pages = await copyDirContentsForChapter({ srcDir, destChapterDir });
+
+    // If chapter has no pages, skip.
+    if (!pages.length) continue;
+
+    const meta = {
+      chapter: chapterIdx + 1,
+      title: chapterLabel,
+      pages: pages.length,
+    };
+
+    const metaPathOut = path.join(destChapterDir, 'meta.json');
+    await fsp.writeFile(metaPathOut, JSON.stringify({ ...meta, pages, downloadedAt: Date.now() }, null, 2));
+
+    chapterIdx++;
+  }
+
+  // Create library entry
+  const db = loadDB();
+  if (!db.library) db.library = {};
+  if (!db.library[mangaId]) {
+    db.library[mangaId] = {
+      id: mangaId,
+      title: titleStr,
+      cover: null,
+      status: 'local',
+      addedAt: Date.now(),
+    };
+  }
+  // Ensure db.downloads is NOT used (renderer uses getDownloads from filesystem)
+  saveDB(db);
+
+  return { mangaId, title: titleStr };
+}
+
+async function importFromArchive(archivePath) {
+  // Optional CBZ/ZIP support: try unzip into temp folder.
+  // This repo currently has no unzip dependency; use system `tar`/`unzip` when available.
+  // On Windows, `unzip` may or may not exist. We'll attempt both.
+  const osTmp = app.getPath('temp');
+  const tmpDir = path.join(osTmp, `inkflow-import-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  await fsp.mkdir(tmpDir, { recursive: true });
+
+  // Try `tar` first (works if installed), then `powershell Expand-Archive`.
+  try {
+    await new Promise((resolve, reject) => {
+      const ext = path.extname(archivePath).toLowerCase();
+      // `tar` doesn't support .cbz reliably; still try.
+      const cmd = `tar -xf "${archivePath}" -C "${tmpDir}"`;
+      const child = spawn(cmd, { shell: true, stdio: 'ignore' });
+      child.on('error', reject);
+      child.on('exit', code => (code === 0 ? resolve() : reject(new Error('tar extract failed'))));
+    });
+  } catch {
+    // PowerShell fallback
+    await new Promise((resolve, reject) => {
+      const cmd = `powershell -NoProfile -Command "Expand-Archive -Force -LiteralPath '${archivePath}' -DestinationPath '${tmpDir}'"`;
+      const child = spawn(cmd, { shell: true, stdio: 'ignore' });
+      child.on('error', reject);
+      child.on('exit', code => (code === 0 ? resolve() : reject(new Error('Expand-Archive failed'))));
+    });
+  }
+
+  // Determine root folder inside tmp
+  const entries = await fsp.readdir(tmpDir, { withFileTypes: true });
+  const rootDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+  const rootFolder = rootDirs.length === 1 ? path.join(tmpDir, rootDirs[0]) : tmpDir;
+
+  try {
+    return await importFromFolder(rootFolder);
+  } finally {
+    // best-effort cleanup
+    try { await fsp.rm(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
+ipcMain.handle('pick-import-source', async () => {
+  // Return a discriminated union: { type: 'folder', path } or { type:'archive', path }
+  const { dialog } = require('electron');
+  const choice = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Folder', 'CBZ/ZIP', 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    title: 'Import manga',
+    message: 'Import from a folder or a CBZ/ZIP archive?',
+  });
+
+  if (choice.response === 0) {
+    const picked = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Select manga folder'
+    });
+    if (picked.canceled || !picked.filePaths?.[0]) return null;
+    return { type: 'folder', path: picked.filePaths[0] };
+  }
+
+  if (choice.response === 1) {
+    const picked = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: 'Select CBZ/ZIP archive',
+      filters: [{ name: 'Archives', extensions: ['cbz', 'zip'] }]
+    });
+    if (picked.canceled || !picked.filePaths?.[0]) return null;
+    return { type: 'archive', path: picked.filePaths[0] };
+  }
+
+  return null;
+});
+
+ipcMain.handle('import-manga', async (_, picked) => {
+  if (!picked?.type || !picked?.path) throw new Error('Invalid import source');
+
+  if (picked.type === 'folder') {
+    return await importFromFolder(picked.path);
+  }
+
+  if (picked.type === 'archive') {
+    return await importFromArchive(picked.path);
+  }
+
+  throw new Error('Unsupported import type');
+});
+
 
 
 const GITHUB_OWNER = 'zigby33';

@@ -8,8 +8,12 @@ contextBridge.exposeInMainWorld('electron', {
   fetchImage: (url) => ipcRenderer.invoke('fetch-image', url),
   fetchImagesBatch: (urls, concurrency) => ipcRenderer.invoke('fetch-images-batch', urls, concurrency),
 
+  pickImportSource: () => ipcRenderer.invoke('pick-import-source'),
+  importManga: (picked) => ipcRenderer.invoke('import-manga', picked),
+
   downloadChapter: (mangaId, chapterId, meta, pageUrls) =>
     ipcRenderer.invoke('download-chapter', mangaId, chapterId, meta, pageUrls),
+
   getDownloads: () => ipcRenderer.invoke('get-downloads'),
   readPage: (filePath) => ipcRenderer.invoke('read-page', filePath),
   deleteDownload: (mangaId, chapterId) => ipcRenderer.invoke('delete-download', mangaId, chapterId),

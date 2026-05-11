@@ -351,13 +351,16 @@ async function renderSettings(main) {
             <div class="settings-desc">${libCount} series tracking progress.</div>
           </div>
         </div>
-        <div class="settings-row">
+      <div class="settings-row">
           <div class="settings-info">
             <div class="settings-name">Downloads</div>
             <div class="settings-desc">${dlChapters} chapters (${totalPages} pages) saved.</div>
           </div>
           <button class="btn btn-ghost" id="openDownloadsBtn">Open Folder</button>
         </div>
+
+
+
         <div class="settings-row">
           <div class="settings-info">
             <div class="settings-name">Image Cache</div>
@@ -425,6 +428,9 @@ async function renderSettings(main) {
     const success = await api.openDownloadsFolder();
     showToast(success ? 'Downloads folder opened' : 'Unable to open downloads folder');
   });
+
+
+
 
   // If an update was already downloading when we opened Settings, show the bar
   if (S.updateProgress !== null && S.updateProgress < 100) {
@@ -1181,9 +1187,15 @@ function renderLibrary(main) {
   const activeSort = S.libSort || 'added';
 
   main.innerHTML = `
-    <div class="section-title"><span class="ic">★</span> My Library</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+      <div class="section-title" style="margin:0"><span class="ic">★</span> My Library</div>
+      <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
+        <button class="btn btn-ghost" id="importMangaBtn" style="font-size:11px; padding:6px 12px;">＋ Import</button>
+      </div>
+    </div>
     <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
       <div class="tabs" style="margin:0">
+
         ${categories.map(c => `<button class="tab ${activeCat === c.id ? 'active' : ''}" data-cat="${c.id}">${c.label}</button>`).join('')}
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
@@ -1222,6 +1234,27 @@ function renderLibrary(main) {
     const filtered = performLibFilter(ids, S.libFilter || 'all', S.libSearch, S.libSort);
     renderLibGrid(grid, filtered);
   });
+
+  document.getElementById('importMangaBtn')?.addEventListener('click', async () => {
+    try {
+      const picked = await api.pickImportSource();
+      if (!picked) return;
+      showToast('Import started...');
+      const result = await api.importManga(picked);
+      if (result?.mangaId) {
+        showToast(`Imported: ${result.title}`);
+        S.downloads = await api.getDownloads();
+        S.db = await api.dbGet();
+        // Re-render library with new items
+        renderLibrary(main);
+      } else {
+        showToast('Import finished');
+      }
+    } catch (e) {
+      showToast('Import failed: ' + (e?.message || e), true);
+    }
+  });
+
 
   const filteredIds = performLibFilter(ids, activeCat, libSearch, activeSort);
   renderLibGrid(document.getElementById('libGrid'), filteredIds);
