@@ -900,6 +900,70 @@ async function openManga(id) {
   main.innerHTML = loading('Loading manga...');
   S.lastView = S.view; // Save current view before changing to detail
   S.view = 'detail';
+
+  // Local-import support (mangaId starts with local-)
+  if (String(id).startsWith('local-')) {
+    const meta = S.db.library?.[id];
+    if (!meta) {
+      main.innerHTML = err('Missing local manga metadata in library');
+      return;
+    }
+
+    S.manga = {
+      id,
+      attributes: {
+        status: meta.status || 'local',
+        title: { en: meta.title },
+      },
+      relationships: [
+        // coverUrl() uses relationships; local cover is stored directly in meta.cover
+        // so we won't rely on coverUrl() for local covers.
+      ],
+    };
+
+    // Build chapters from downloaded meta.json files (filesystem-backed S.downloads)
+    S.chapters = [];
+    const dl = S.downloads?.[id] || {};
+    const chapterIds = Object.keys(dl);
+
+    // Ensure stable chapter order: by chapter number if present, else by key
+    S.chapters = chapterIds
+      .map((chId) => {
+        const chMeta = dl[chId] || {};
+        const chNum = chMeta.chapter ?? chMeta.chapterNumber ?? null;
+        const chTitle = chMeta.title ?? '';
+        return {
+          id: chId,
+          attributes: {
+            chapter: chNum ?? '?',
+            title: chTitle,
+          },
+        };
+      })
+      .sort((a, b) => {
+        const an = parseFloat(a.attributes.chapter);
+        const bn = parseFloat(b.attributes.chapter);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+        return String(a.id).localeCompare(String(b.id));
+      });
+
+    // Add to Recent History
+    const tStr = meta.title;
+    const mData = {
+      id,
+      title: tStr,
+      cover: meta.cover || null,
+      attributes: { status: meta.status || meta.attributes?.status },
+    };
+    S.db.history.recent = [mData, ...S.db.history.recent.filter(m => m.id !== mData.id)].slice(0, 24);
+    S.db.history.lastMangaId = id;
+    api.dbSave(S.db);
+
+    // Render with local cover + offline chapters
+    renderDetail(main);
+    return;
+  }
+
   try {
     const mr = await api.mdexFetch(`/manga/${id}`, { 'includes[]': ['cover_art', 'author', 'artist'] });
     S.manga = mr.data;
