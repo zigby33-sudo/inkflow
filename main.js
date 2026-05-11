@@ -448,8 +448,14 @@ app.whenReady().then(() => {
     
     const normalizedPath = path.normalize(decodedPath);
     const normalizedDownloads = path.normalize(DOWNLOADS_DIR);
+    const rel = path.relative(normalizedDownloads, normalizedPath);
+    const inside =
+      rel !== '' &&
+      !rel.startsWith('..' + path.sep) &&
+      rel !== '..' &&
+      !path.isAbsolute(rel);
 
-    if (normalizedPath.startsWith(normalizedDownloads)) {
+    if (inside) {
       return net.fetch(pathToFileURL(normalizedPath).toString());
     }
     return new Response('Forbidden', { status: 403 });

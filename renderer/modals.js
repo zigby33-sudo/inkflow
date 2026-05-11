@@ -50,8 +50,15 @@
 
   document.addEventListener('keydown', (e) => {
     if (!overlay.classList.contains('active')) return;
-    if (e.key === 'Escape') hideModal(false);
-    if (e.key === 'Enter')  hideModal(true);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      hideModal(false);
+    } else if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      e.stopPropagation();
+      hideModal(true);
+    }
   });
 
   window.inkModal = showModal;

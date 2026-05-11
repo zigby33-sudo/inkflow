@@ -3,7 +3,8 @@
 const api = window.electron;
 
 const CHANGELOG = [
-  { icon: '🚀', title: 'New Updater', desc: 'FINALLY found a way to auto update.' },
+  { icon: '🐛', title: 'Bug Fixes', desc: 'fixed saved reader mode being ignored'},
+  { icon: '🐛', title: 'Bug Fixes', desc: 'local file access uses a safer method'}
 ];
 
 const S = {
@@ -68,6 +69,8 @@ async function init() {
   document.getElementById('winMinBtn').addEventListener('click', () => api.winMinimize());
   document.getElementById('winMaxBtn').addEventListener('click', () => api.winMaximize());
   document.getElementById('winCloseBtn').addEventListener('click', () => api.winClose());
+  api.winIsMaximized().then(syncWinMaxButton);
+  api.onMaximizedChange(syncWinMaxButton);
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.view));
@@ -79,6 +82,7 @@ async function init() {
   searchInput.addEventListener('input', e => {
     const q = e.target.value.trim();
     S.searchQuery = q; // Store query in state
+    clearTimeout(searchTimer);
     if (q.length >= 2) searchTimer = setTimeout(() => navigate('search'), 380);
   });
   searchInput.addEventListener('keydown', e => {
@@ -117,7 +121,7 @@ async function init() {
     readerState.pageWidth = e.target.value;
   });
   document.getElementById('readerDirectionSelect').addEventListener('change', e => {
-    setReaderDirection(e.target.value);
+    setReaderDirection(e.target.value, true);
   });
   document.getElementById('imageQualitySelect').addEventListener('change', e => {
     readerState.imageQuality = e.target.value;
@@ -310,21 +314,30 @@ function setReaderMode(mode, save = false) {
   if (sel) sel.value = mode;
   renderAllPages(document.getElementById('readerPages'));
   if (save) {
-    S.db.settings.defaultMode = mode;
+    S.db.settings.defaultReaderMode = mode;
+    delete S.db.settings.defaultMode; // legacy key from older builds
     api.dbSave(S.db);
     showToast(`Reader mode saved: ${mode}`);
   }
+}
+
+function syncWinMaxButton(isMaximized) {
+  const btn = document.getElementById('winMaxBtn');
+  if (!btn) return;
+  btn.title = isMaximized ? 'Restore' : 'Maximize';
+  btn.textContent = isMaximized ? '❐' : '□';
 }
 
 function setReaderDirection(direction, save = false) {
   readerState.direction = direction;
   const sel = document.getElementById('readerDirectionSelect');
   if (sel) sel.value = direction;
-  showToast(`Direction: ${direction.toUpperCase()}`);
   if (save) {
     S.db.settings.defaultDirection = direction;
     api.dbSave(S.db);
     showToast(`Reader direction saved: ${direction.toUpperCase()}`);
+  } else {
+    showToast(`Direction: ${direction.toUpperCase()}`);
   }
 }
 
@@ -1790,7 +1803,7 @@ async function openReader(chIdx) {
   readerState.loaded  = new Set();
   readerState.total   = 0;
   readerState.isOffline = !!dlChapter;
-  readerState.mode = S.db.settings?.defaultReaderMode || 'single';
+  readerState.mode = S.db.settings?.defaultReaderMode ?? S.db.settings?.defaultMode ?? 'single';
   readerState.direction = S.db.settings?.defaultDirection || document.getElementById('readerDirectionSelect').value || 'ltr';
   readerState.imageQuality = S.db.settings?.imageQuality || 'original';
   readerState.preloadCount = Number(S.db.settings?.preloadPages ?? 3);
@@ -1999,6 +2012,10 @@ function readerKeyHandler(e) {
     document.removeEventListener('keydown', readerKeyHandler);
     return;
   }
+  const modalOverlay = document.getElementById('inkModalOverlay');
+  if (modalOverlay?.classList.contains('active')) return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
   switch (e.key) {
     case 'Escape':     closeReader(); break;
     case 'f':
