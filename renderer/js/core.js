@@ -1,311 +1,28 @@
-// ════════════ INKFLOW ════════════
+/**
+ * Reader + screens + downloads — split from the old single app.js.
+ * Depends on: ../state.js, ../router.js, ../ui.js, ../manga.js, ../config.js
+ */
+import { S, api, readerState } from './state.js';
+import { navigate, render, registerViews } from './router.js';
+import { showToast, sleep, resetReaderTimer, applyAccent, showWhatsNew } from './ui.js';
+import {
+  title,
+  author,
+  coverUrl,
+  loading,
+  err,
+  sourceDesc,
+  loadImagesViaIPC,
+  makeCoverImg,
+  mangaCard,
+} from './manga.js';
+import { GENRE_TAGS } from './config.js';
 
-const api = window.electron;
-
-const CHANGELOG = [
-  { icon: '🐛', title: 'Bug Fixes', desc: 'fixed saved reader mode being ignored'},
-  { icon: '🐛', title: 'Bug Fixes', desc: 'local file access uses a safer method'}
-];
-
-const S = {
-  view: 'home',
-  manga: null,
-  chapters: [],
-  currentChIdx: 0,
-  db: { library: {}, progress: {}, history: {}, settings: {} },
-  downloads: {},
-  dlInProgress: new Set(),
-  readerToolbarVisible: true,
-  toolbarTimer: null,
-  activeSource: 'mangadex',
-  homeSort: 'followedCount',
-  homeOffset: 0,
-  updateProgress: null,
-  libSearch: '',
-  libSort: 'added',
-  version: '',
-  searchQuery: '', // New: Store the current search query
-  lastView: 'home',
-};
-
-async function init() {
-  S.db = await api.dbGet();
-  S.downloads = await api.getDownloads();
-  S.version = await api.getVersion();
-
-  applyFonts();
-
-  if (!S.db.history) S.db.history = {};
-  if (!S.db.history.recent) S.db.history.recent = [];
-  if (!S.db.progress) S.db.progress = {};
-  if (!S.db.library) S.db.library = {};
-  if (!S.db.settings) S.db.settings = {};
-  const defaultSources = {
-    mangadex: { enabled: true, name: 'MangaDex' },
-    mal: { enabled: true, name: 'MyAnimeList' },
-    mangaplus: { enabled: true, name: 'MangaPlus' },
-    comick: { enabled: true, name: 'Comick' }
-  };
-
-  if (!S.db.settings.sources) {
-    S.db.settings.sources = defaultSources;
-  } else {
-    let changed = false;
-    for (const [id, meta] of Object.entries(defaultSources)) {
-      if (!S.db.settings.sources[id]) {
-        S.db.settings.sources[id] = meta;
-        changed = true;
-      }
-    }
-    for (const id of Object.keys(S.db.settings.sources)) {
-      if (!defaultSources[id]) {
-        delete S.db.settings.sources[id];
-        changed = true;
-      }
-    }
-    if (changed) api.dbSave(S.db);
-  }
-
-  document.getElementById('winMinBtn').addEventListener('click', () => api.winMinimize());
-  document.getElementById('winMaxBtn').addEventListener('click', () => api.winMaximize());
-  document.getElementById('winCloseBtn').addEventListener('click', () => api.winClose());
-  api.winIsMaximized().then(syncWinMaxButton);
-  api.onMaximizedChange(syncWinMaxButton);
-
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.view));
-  });
-  document.getElementById('logoBtn').addEventListener('click', () => navigate('home'));
-
-  let searchTimer;
-  const searchInput = document.getElementById('searchInput');
-  searchInput.addEventListener('input', e => {
-    const q = e.target.value.trim();
-    S.searchQuery = q; // Store query in state
-    clearTimeout(searchTimer);
-    if (q.length >= 2) searchTimer = setTimeout(() => navigate('search'), 380);
-  });
-  searchInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { clearTimeout(searchTimer); S.searchQuery = e.target.value.trim(); navigate('search'); }
-  });
-
-  // QOL: Global search shortcut (/)
-  window.addEventListener('keydown', e => {
-    if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-      e.preventDefault();
-      searchInput.focus();
-    }
-  });
-
-  document.getElementById('closeReaderBtn').addEventListener('click', closeReader);
-  document.getElementById('prevChBtn').addEventListener('click', () => shiftChapter(-1));
-  document.getElementById('nextChBtn').addEventListener('click', () => shiftChapter(1));
-  document.getElementById('prevPageBtn').addEventListener('click', () => turnPage(-1));
-  document.getElementById('nextPageBtn').addEventListener('click', () => turnPage(1));
-  document.getElementById('pageSelect').addEventListener('change', e => jumpToPage(parseInt(e.target.value)));
-  document.getElementById('chapterSelect').addEventListener('change', e => openReader(parseInt(e.target.value)));
-  document.getElementById('readerSettingsBtn').addEventListener('click', () => {
-    document.getElementById('readerPanel').classList.toggle('hidden-panel');
-  });
-  document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
-  
-  document.getElementById('readerHitboxLeft').addEventListener('click', () => turnPage(-1));
-  document.getElementById('readerHitboxRight').addEventListener('click', () => turnPage(1));
-
-  document.getElementById('readingModeSelect').addEventListener('change', e => {
-    setReaderMode(e.target.value, true);
-  });
-  document.getElementById('pageWidthSelect').addEventListener('change', e => {
-    const w = e.target.value === '9999' ? '100%' : e.target.value + 'px';
-    document.querySelectorAll('.reader-page').forEach(img => img.style.maxWidth = w);
-    readerState.pageWidth = e.target.value;
-  });
-  document.getElementById('readerDirectionSelect').addEventListener('change', e => {
-    setReaderDirection(e.target.value, true);
-  });
-  document.getElementById('imageQualitySelect').addEventListener('change', e => {
-    readerState.imageQuality = e.target.value;
-    S.db.settings.imageQuality = e.target.value;
-    api.settingsSave(S.db.settings);
-    showToast(`Image quality: ${e.target.value === 'data-saver' ? 'Data Saver' : 'Original'}`);
-  });
-  document.getElementById('preloadSelect').addEventListener('change', e => {
-    readerState.preloadCount = Number(e.target.value);
-    S.db.settings.preloadPages = readerState.preloadCount;
-    api.settingsSave(S.db.settings);
-    showToast(`Preload pages: ${readerState.preloadCount}`);
-  });
-  document.getElementById('readerMangaTitle').addEventListener('click', closeReader);
-  document.getElementById('reportChBtn').addEventListener('click', () => showToast('Thanks for the report!'));
-  document.getElementById('clearCacheBtn').addEventListener('click', async () => {
-    await api.clearCache();
-    showToast('Cache cleared successfully');
-  });
-
-  api.onDownloadProgress(({ chapterId, current, total }) => {
-    const btn = document.querySelector(`[data-ch-id="${chapterId}"] .ch-dl-btn`);
-    if (btn) btn.title = `${current}/${total}`;
-    const overlay = document.getElementById('dl-overlay-' + chapterId);
-    if (overlay) {
-      overlay.querySelector('.dl-progress-label').textContent = `Downloading page ${current}/${total}...`;
-      overlay.querySelector('.progress-fill').style.width = `${Math.round(current / total * 100)}%`;
-    }
-  });
-
-  const readerView = document.getElementById('readerView');
-  readerView.addEventListener('mousemove', () => {
-    if (!readerView.classList.contains('active')) return;
-    
-    const toolbar = document.getElementById('readerToolbar');
-    toolbar.classList.remove('hidden');
-    
-    resetReaderTimer();
-  });
-
-  const splash = document.getElementById('splashScreen');
-  if (splash) {
-    splash.style.opacity = '0';
-    setTimeout(() => splash.remove(), 500);
-  }
-  
-  document.addEventListener('click', e => {
-    if (e.target.classList.contains('source-btn')) {
-      S.activeSource = e.target.dataset.source;
-      render();
-    }
-  });
-
-  if (S.db.settings.accentColor) applyAccent(S.db.settings.accentColor);
-
-  api.onUpdateStatus((msg) => showToast(msg));
-
-  api.onUpdateProgress((pct) => {
-    S.updateProgress = pct;
-    const wrap = document.getElementById('updateProgressWrap');
-    if (wrap) {
-      wrap.style.display = (pct !== null && pct < 100) ? 'block' : 'none';
-      const fill = document.getElementById('updateProgressFill');
-      const label = document.getElementById('updateProgressLabel');
-      if (fill) fill.style.width = Math.round(pct || 0) + '%';
-      if (label) label.textContent = `Downloading update: ${Math.round(pct || 0)}%`;
-    }
-  });
-
-  if (S.db.settings.lastVersion !== S.version) {
-    setTimeout(() => showWhatsNew(S.version), 1000);
-    S.db.settings.lastVersion = S.version;
-    api.dbSave(S.db);
-  }
-
-  api.checkForUpdates();
-
-  navigate('home');
-}
-
-function applyFonts() {
-  if (document.getElementById('inkflow-fonts')) return;
-  const style = document.createElement('style');
-  style.id = 'inkflow-fonts';
-  style.textContent = `
-    :root {
-      --font-head: "Inter Display", "Segoe UI Variable Display", sans-serif;
-      --font-body: "Inter", system-ui, sans-serif;
-      --font-mono: "JetBrains Mono", monospace;
-      --radius-lg: 24px;
-      --radius-md: 16px;
-      --radius-sm: 10px;
-      --shadow-soft: 0 10px 40px -10px rgba(0,0,0,0.4);
-      --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    body {
-      font-family: var(--font-body);
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-      background: #0a0a0a;
-      color: #e0e0e0;
-      letter-spacing: -0.01em;
-    }
-    #mainContent { padding: 30px 40px; }
-    .section-title { font-family: var(--font-head); font-weight: 900; font-size: 28px; letter-spacing: -0.5px; margin-bottom: 25px; display: flex; align-items: center; gap: 12px; }
-    .section-title .ic { font-size: 24px; color: var(--accent); }
-    .manga-card { 
-      background: var(--bg2); 
-      border-radius: var(--radius-md); 
-      border: 1px solid var(--glass-border); 
-      padding: 12px; 
-      transition: all var(--transition);
-      cursor: pointer;
-      position: relative;
-    }
-    .manga-card:hover { 
-      transform: translateY(-8px) scale(1.02); 
-      border-color: var(--accent); 
-      box-shadow: var(--shadow-soft); 
-      background: var(--bg3);
-    }
-    .manga-cover-wrap { border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 12px; }
-    .manga-cover { aspect-ratio: 2/3; object-fit: cover; width: 100%; transition: transform 0.6s ease; }
-    .manga-card:hover .manga-cover { transform: scale(1.05); }
-    .btn { 
-      padding: 10px 20px; 
-      border-radius: var(--radius-sm); 
-      font-weight: 700; 
-      text-transform: uppercase;
-      font-size: 11px;
-      letter-spacing: 0.5px;
-      transition: all var(--transition);
-      border: 1px solid transparent;
-    }
-    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 15px -5px var(--accent); }
-    .btn-primary:hover { filter: brightness(1.2); box-shadow: 0 8px 25px -5px var(--accent); transform: translateY(-1px); }
-    .genre-chip { padding: 8px 18px; border-radius: var(--radius-lg); font-size: 12px; font-weight: 600; background: var(--bg2); border: 1px solid var(--glass-border); transition: all var(--transition); }
-    .genre-chip:hover { border-color: var(--accent); color: var(--text1); }
-    .genre-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .hero-continue { padding: 30px; background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); backdrop-filter: blur(10px); border-radius: var(--radius-lg); border: 1px solid var(--glass-border); margin-bottom: 40px; display: flex; align-items: center; gap: 25px; transition: border-color var(--transition); }
-    .hero-continue:hover { border-color: var(--accent); }
-    .hero-thumb { width: 100px; height: 140px; border-radius: var(--radius-sm); box-shadow: 0 8px 20px rgba(0,0,0,0.4); object-fit: cover; }
-  `;
-  document.head.appendChild(style);
-}
-
-function applyAccent(color) {
-  document.documentElement.style.setProperty('--accent', color);
-}
-
-function resetReaderTimer() {
-  const toolbar = document.getElementById('readerToolbar');
-  clearTimeout(S.toolbarTimer);
-  S.toolbarTimer = setTimeout(() => {
-    // Only hide if the settings panel isn't open
-    if (document.getElementById('readerPanel').classList.contains('hidden-panel')) {
-      toolbar.classList.add('hidden');
-    }
-  }, 3500);
-}
-
-// ── Navigation ────────────────────────────────────────────────────
-function navigate(view) {
-  S.lastView = S.view; // Save current view before changing
-  S.view = view;
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const nb = document.querySelector(`.nav-btn[data-view="${view === 'detail' ? 'home' : view}"]`);
-  if (nb) nb.classList.add('active');
-  // QOL: Always scroll to top on navigation
-  document.getElementById('mainContent').scrollTo(0, 0);
-  render();
-}
-
-function render() {
-  const main = document.getElementById('mainContent');
-  switch (S.view) {
-    case 'home':      renderBrowse(main); break;
-    case 'search':    renderSearch(main); break; // Now calls the renamed function
-    case 'detail':    renderDetail(main); break;
-    case 'library':   renderLibrary(main); break;
-    case 'history':   renderHistory(main); break;
-    case 'downloads': renderDownloads(main); break;
-    case 'settings':  renderSettings(main); break;
-  }
+export function doSearch(q) {
+  S.searchQuery = String(q).trim();
+  const input = document.getElementById('searchInput');
+  if (input) input.value = S.searchQuery;
+  navigate('search');
 }
 
 function setReaderMode(mode, save = false) {
@@ -321,12 +38,6 @@ function setReaderMode(mode, save = false) {
   }
 }
 
-function syncWinMaxButton(isMaximized) {
-  const btn = document.getElementById('winMaxBtn');
-  if (!btn) return;
-  btn.title = isMaximized ? 'Restore' : 'Maximize';
-  btn.textContent = isMaximized ? '❐' : '□';
-}
 
 function setReaderDirection(direction, save = false) {
   readerState.direction = direction;
@@ -666,6 +377,8 @@ async function renderSettings(main) {
             ['H', 'Toggle UI'],
             ['D', 'Flip Direction'],
             ['Esc', 'Close Reader'],
+            ['/', 'Focus search'],
+            ['Ctrl+K', 'Focus search (select all)'],
           ].map(([key, desc]) => `
             <div class="settings-row" style="padding: 10px 16px;">
               <kbd class="kbd" style="background:var(--bg3); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:11px; border:1px solid var(--glass-border);">${key}</kbd>
@@ -738,15 +451,6 @@ async function renderSettings(main) {
   });
 }
 
-function sourceDesc(id) {
-  const descs = {
-    mangadex: 'The largest free manga platform. Browse, read, and download thousands of titles.',
-    mal: 'MyAnimeList scores, rankings and metadata for manga detail pages.',
-    mangaplus: 'Official publisher. Browse trending Shonen/Seinen series.',
-    comick: 'High-quality comic aggregator with wide library coverage.',
-  };
-  return descs[id] || '';
-}
 
 async function renderBrowse(main) {
   const sources = S.db.settings.sources || {};
@@ -778,69 +482,8 @@ async function renderBrowse(main) {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
-function title(m) {
-  const t = m.attributes?.title;
-  return t?.en || t?.['ja-ro'] || t?.ja || Object.values(t || {})[0] || 'Unknown Title';
-}
-function author(m) {
-  return m.relationships?.find(r => r.type === 'author')?.attributes?.name || '';
-}
-function coverUrl(m) {
-  const rel = m.relationships?.find(r => r.type === 'cover_art');
-  if (!rel?.attributes?.fileName) return null;
-  return `https://uploads.mangadex.org/covers/${m.id}/${rel.attributes.fileName}.256.jpg`;
-}
-
-function loading(msg = 'Loading...') {
-  return `<div class="loading"><div class="spinner"></div>${msg}</div>`;
-}
-function err(msg, retryFn = null) {
-  const retryId = retryFn ? 'retry-' + Date.now() : null;
-  const retryBtn = retryFn ? `<button id="${retryId}" class="btn btn-outline" style="margin-top:12px;font-size:11px;">↺ Retry</button>` : '';
-  const html = `<div class="loading" style="flex-direction:column;gap:8px;"><span style="color:var(--accent)">⚠ ${msg}</span>${retryBtn}</div>`;
-  if (retryFn) {
-    setTimeout(() => {
-      document.getElementById(retryId)?.addEventListener('click', retryFn);
-    }, 50);
-  }
-  return html;
-}
-
-// ── Image loading with IPC proxy ──────────────────────────────────
-// Images are fetched through the main process to bypass MangaDex hotlink blocks
-async function loadImagesViaIPC(imgEls) {
-  for (const img of imgEls) {
-    const src = img.dataset.src;
-    if (!src) continue;
-    try {
-      const b64 = await api.fetchImage(src);
-      img.src = b64;
-    } catch {
-      img.alt = '⚠';
-    }
-  }
-}
-
-// For cover thumbnails, set src directly — in Electron the renderer can
-// reach MangaDex cover CDN (it's only the API and chapter images that
-// need the main process proxy due to Referer checks).
-function makeCoverImg(url, cls = 'manga-cover') {
-  if (!url) return `<div class="${cls.includes('detail') ? 'detail-cover-ph' : 'manga-cover-ph'}">📖</div>`;
-  return `<img class="${cls}" src="${url}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'manga-cover-ph',textContent:'📖'}))">`;
-}
 
 // ── HOME ──────────────────────────────────────────────────────────
-const GENRE_TAGS = [
-  { label: '⚔️ Action',    id: '391b0423-d847-456f-aff0-8b0cfc03066b' },
-  { label: '💘 Romance',   id: 'e5301a23-ebd9-49dd-a0cb-2add944c7fe9' },
-  { label: '😂 Comedy',    id: '4d32cc48-9f00-4cca-9b5a-a839f0764984' },
-  { label: '👻 Horror',    id: 'cdad7e68-1419-41dd-bdce-27753074a640' },
-  { label: '🌟 Fantasy',   id: 'cdc58593-87dd-415e-bbc0-2ec27bf404cc' },
-  { label: '🔬 Sci-Fi',    id: '256c8bd9-4904-4360-bf4f-508a76d67183' },
-  { label: '🧟 Isekai',    id: 'ace04997-f6bd-436e-b261-779182193d3d' },
-  { label: '🥊 Sports',    id: '69964a64-2f90-4d33-beeb-e3bdbbe4a929' },
-];
 
 let homeActiveGenre = null;
 
@@ -1125,23 +768,6 @@ function fillGrid(id, mangas) {
   });
 }
 
-function mangaCard(m) {
-  const inLib = !!S.db.library[m.id];
-  const hasDl = !!S.downloads[m.id];
-  const cover = coverUrl(m);
-  return `
-    <div class="manga-card" data-manga-id="${m.id}">
-      <div class="manga-cover-wrap">
-        ${cover ? `<img class="manga-cover" src="${cover}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'manga-cover-ph',textContent:'📖'}))">` : '<div class="manga-cover-ph">📖</div>'}
-      </div>
-      <div class="manga-info">
-        <div class="manga-title">${title(m)}</div>
-        <div class="manga-sub">${m.attributes.status || ''}</div>
-      </div>
-      ${inLib ? '<div class="manga-badge">★</div>' : ''}
-      ${hasDl ? '<div class="manga-badge dl">↓</div>' : ''}
-    </div>`;
-}
 
 // ── SEARCH ────────────────────────────────────────────────────────
 async function renderSearch(main) {
@@ -1311,7 +937,7 @@ async function openManga(id) {
 
 async function renderDetail(main) {
   const m = S.manga;
-  if (!m) { renderHome(main); return; }
+  if (!m) { navigate('home'); return; }
 
   const cover = coverUrl(m);
   const t = title(m);
@@ -1365,7 +991,7 @@ async function renderDetail(main) {
 
     <div class="chapter-list">
       <div class="chapter-list-header">
-        <div class="section-title" style="margin-bottom:0"><span class="ic">§</span> Chapters (${S.chapters.length})</div>
+        <div class="section-title" style="margin-bottom:0"><span class="ic">📑</span> Chapters (${S.chapters.length})</div>
         ${S.chapters.length > 10 ? `
           <div class="chapter-search-wrap">
             <input type="text" class="chapter-search-input" id="chapterSearch" placeholder="Filter chapters...">
@@ -1714,28 +1340,8 @@ function renderDownloads(main) {
   });
 }
 
-// ── READER ────────────────────────────────────────────────────────
-// Stores loaded pages (b64 strings) for current chapter
-const readerState = {
-  pages: [],
-  urls: [],
-  loaded: new Set(),
-  pending: new Set(),
-  total: 0,
-  currentPage: 0,
-  isOffline: false,
-  pageWidth: '800',
-  mode: 'single',
-  direction: 'ltr',
-  imageQuality: 'original',
-  preloadCount: 3,
-  zoom: 100,
-  fitMode: 'width', // 'width', 'height', 'screen', 'original'
-  touchStartX: 0,
-  touchStartY: 0,
-  isZoomed: false
-};
 
+// ── READER
 async function openReader(chIdx) {
   S.currentChIdx = chIdx;
   const ch = S.chapters[chIdx];
@@ -2412,66 +2018,29 @@ async function downloadAll() {
   showToast(`✓ Downloaded ${count} new chapters`);
 }
 
-// ── UTILS ─────────────────────────────────────────────────────────
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+globalThis.handleReaderWheel = handleReaderWheel;
+globalThis.handleTouchStart = handleTouchStart;
+globalThis.handleTouchEnd = handleTouchEnd;
+globalThis.handleMouseDown = handleMouseDown;
 
-let toastTimer;
-function showToast(msg, isError = false) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast' + (isError ? ' error' : '') + ' show';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
-}
+registerViews({
+  renderBrowse,
+  renderSearch,
+  renderDetail,
+  renderLibrary,
+  renderHistory,
+  renderDownloads,
+  renderSettings,
+});
 
-function showWhatsNew(version) {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.style.cssText = `
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 10000; opacity: 0; transition: opacity 0.3s ease;
-  `;
-
-  overlay.innerHTML = `
-    <div class="modal-content" style="
-      background: var(--bg2); border: 1px solid var(--glass-border);
-      border-radius: 16px; padding: 32px; width: 450px; max-width: 90%;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(20px);
-      transition: transform 0.3s ease;
-    ">
-      <div style="font-family:var(--font-head); font-weight:900; font-size:24px; margin-bottom:8px; color:var(--accent);">What's New in v${version}</div>
-      <div style="font-size:13px; color:var(--text2); margin-bottom:24px;">Welcome back! Here is what we've improved in this update.</div>
-      
-      <ul style="list-style:none; padding:0; margin:0 0 32px 0; display:flex; flex-direction:column; gap:16px;">
-        ${CHANGELOG.map(item => `
-          <li style="display:flex; gap:12px;">
-            <span style="font-size:20px;">${item.icon}</span>
-            <div>
-              <div style="font-weight:bold; font-size:14px;">${item.title}</div>
-              <div style="font-size:12px; color:var(--text2);">${item.desc}</div>
-            </div>
-          </li>
-        `).join('')}
-      </ul>
-
-      <button class="btn btn-primary" id="closeWhatsNew" style="width:100%; padding:12px;">Awesome, let's go!</button>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-  setTimeout(() => {
-    overlay.style.opacity = '1';
-    overlay.querySelector('.modal-content').style.transform = 'translateY(0)';
-  }, 10);
-
-  document.getElementById('closeWhatsNew').onclick = () => {
-    overlay.style.opacity = '0';
-    overlay.querySelector('.modal-content').style.transform = 'translateY(20px)';
-    setTimeout(() => overlay.remove(), 300);
-  };
-}
-
-// ── Boot ──────────────────────────────────────────────────────────
-init();
+export {
+  openReader,
+  closeReader,
+  shiftChapter,
+  turnPage,
+  jumpToPage,
+  setReaderMode,
+  setReaderDirection,
+  toggleFullscreen,
+  readDownloadedChapter,
+};
