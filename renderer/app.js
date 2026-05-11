@@ -23,6 +23,8 @@ const S = {
   libSearch: '',
   libSort: 'added',
   version: '',
+  searchQuery: '', // New: Store the current search query
+  lastView: 'home',
 };
 
 async function init() {
@@ -75,12 +77,12 @@ async function init() {
   let searchTimer;
   const searchInput = document.getElementById('searchInput');
   searchInput.addEventListener('input', e => {
-    clearTimeout(searchTimer);
     const q = e.target.value.trim();
-    if (q.length >= 2) searchTimer = setTimeout(() => doSearch(q), 380);
+    S.searchQuery = q; // Store query in state
+    if (q.length >= 2) searchTimer = setTimeout(() => navigate('search'), 380);
   });
   searchInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(e.target.value.trim()); }
+    if (e.key === 'Enter') { clearTimeout(searchTimer); S.searchQuery = e.target.value.trim(); navigate('search'); }
   });
 
   // QOL: Global search shortcut (/)
@@ -278,9 +280,9 @@ function resetReaderTimer() {
 }
 
 // ── Navigation ────────────────────────────────────────────────────
-function navigate(view, data = null) {
+function navigate(view) {
+  S.lastView = S.view; // Save current view before changing
   S.view = view;
-  if (data) S.manga = data;
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const nb = document.querySelector(`.nav-btn[data-view="${view === 'detail' ? 'home' : view}"]`);
   if (nb) nb.classList.add('active');
@@ -293,7 +295,7 @@ function render() {
   const main = document.getElementById('mainContent');
   switch (S.view) {
     case 'home':      renderBrowse(main); break;
-    case 'search':    renderSearch(main); break;
+    case 'search':    renderSearch(main); break; // Now calls the renamed function
     case 'detail':    renderDetail(main); break;
     case 'library':   renderLibrary(main); break;
     case 'history':   renderHistory(main); break;
@@ -1039,7 +1041,7 @@ async function renderMALBrowse(main, sourceBar) {
     grid.innerHTML = res.data.map(m => `
       <div class="manga-card" data-mal-title="${m.title}">
         <div class="manga-cover-wrap">
-          <img class="manga-cover" src="${m.images.jpg.large_image_url || m.images.jpg.image_url}" loading="lazy" onerror="this.src=''">
+          <img class="manga-cover" data-src="${m.images.jpg.large_image_url || m.images.jpg.image_url}" loading="lazy">
         </div>
         <div class="manga-info">
           <div class="manga-title">${m.title}</div>
@@ -1048,6 +1050,8 @@ async function renderMALBrowse(main, sourceBar) {
       </div>
     `).join('');
     
+    loadImagesViaIPC(grid.querySelectorAll('img.manga-cover'));
+
     grid.querySelectorAll('[data-mal-title]').forEach(card => {
       card.addEventListener('click', () => {
         const q = card.dataset.malTitle;
@@ -1127,11 +1131,11 @@ function mangaCard(m) {
 }
 
 // ── SEARCH ────────────────────────────────────────────────────────
-async function doSearch(q) {
-  if (!q || q.length < 2) return;
-  S.view = 'search';
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const main = document.getElementById('mainContent');
+async function renderSearch(main) {
+  const q = S.searchQuery;
+  if (!q || q.length < 2) {
+    main.innerHTML = err('Please enter at least 2 characters to search.', () => navigate('home')); return;
+  }
   main.innerHTML = loading(`Searching sources for "${q}"...`);
 
   const sources = S.db.settings.sources;
@@ -1204,7 +1208,7 @@ async function doSearch(q) {
         grid.innerHTML = (data || []).map(m => `
           <div class="manga-card" data-comick-title="${m.title.replace(/"/g, '&quot;')}">
             <div class="manga-cover-wrap">
-              ${m.md_covers && m.md_covers[0] ? `<img class="manga-cover" src="https://meo.comick.pictures/${m.md_covers[0].b2key}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'manga-cover-ph',textContent:'📖'}))">` : '<div class="manga-cover-ph">📖</div>'}
+              ${m.md_covers && m.md_covers[0] ? `<img class="manga-cover" data-src="https://meo.comick.pictures/${m.md_covers[0].b2key}" loading="lazy">` : '<div class="manga-cover-ph">📖</div>'}
             </div>
             <div class="manga-info">
               <div class="manga-title">${m.title}</div>
@@ -1214,17 +1218,18 @@ async function doSearch(q) {
         grid.querySelectorAll('[data-comick-title]').forEach(card => {
           card.addEventListener('click', () => {
             const title = card.dataset.comickTitle;
-            document.getElementById('searchInput').value = title;
-            doSearch(title);
+            S.searchQuery = title; // Set query in state
+            navigate('search'); // Navigate to search view
           });
         });
+        loadImagesViaIPC(grid.querySelectorAll('img.manga-cover'));
       }
     } else if (sourceId === 'mal') {
       const grid = document.getElementById('srGridMAL');
       grid.innerHTML = data.data.map(m => `
         <div class="manga-card" data-mal-title="${m.title.replace(/"/g, '&quot;')}">
           <div class="manga-cover-wrap">
-            <img class="manga-cover" src="${m.images.jpg.large_image_url || m.images.jpg.image_url}" loading="lazy" onerror="this.src=''">
+            <img class="manga-cover" data-src="${m.images.jpg.large_image_url || m.images.jpg.image_url}" loading="lazy">
           </div>
           <div class="manga-info">
             <div class="manga-title">${m.title}</div>
@@ -1235,10 +1240,11 @@ async function doSearch(q) {
       grid.querySelectorAll('[data-mal-title]').forEach(card => {
         card.addEventListener('click', () => {
           const title = card.dataset.malTitle;
-          document.getElementById('searchInput').value = title;
-          doSearch(title); // Re-search to find the MDex entry with chapters
+          S.searchQuery = title; // Set query in state
+          navigate('search'); // Navigate to search view
         });
       });
+      loadImagesViaIPC(grid.querySelectorAll('img.manga-cover'));
     }
   });
 }
@@ -1247,6 +1253,7 @@ async function doSearch(q) {
 async function openManga(id) {
   const main = document.getElementById('mainContent');
   main.innerHTML = loading('Loading manga...');
+  S.lastView = S.view; // Save current view before changing to detail
   S.view = 'detail';
   try {
     const mr = await api.mdexFetch(`/manga/${id}`, { 'includes[]': ['cover_art', 'author', 'artist'] });
@@ -1363,7 +1370,7 @@ async function renderDetail(main) {
   document.getElementById('malStatusSel').value = savedStatus;
 
   // Wire buttons
-  document.getElementById('backBtn').addEventListener('click', () => navigate('home'));
+  document.getElementById('backBtn').addEventListener('click', () => navigate(S.lastView || 'home'));
   document.getElementById('startReadBtn').addEventListener('click', () => openReader(0));
   document.getElementById('libBtn').addEventListener('click', () => toggleLibrary());
   document.getElementById('dlAllBtn').addEventListener('click', () => downloadAll());
