@@ -1,4 +1,4 @@
-# Inkflow — Manga Reader
+![Inkflow — Manga Reader](https://i.ibb.co/CpLKTJgr/image-psd.png)
 
 A high-performance desktop manga reader with MangaDex browsing, MyAnimeList (MAL) stats, and fully offline reading via on-disk downloads.
 
