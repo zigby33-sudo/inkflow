@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   downloadChapter: (mangaId, chapterId, meta, pageUrls) =>
     ipcRenderer.invoke('download-chapter', mangaId, chapterId, meta, pageUrls),
+  cancelDownload: (chapterId) => ipcRenderer.invoke('cancel-download', chapterId),
 
   getDownloads: () => ipcRenderer.invoke('get-downloads'),
   readPage: (filePath) => ipcRenderer.invoke('read-page', filePath),

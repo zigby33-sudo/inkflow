@@ -4,7 +4,7 @@ if (process.argv.includes('--updater')) {
   return; // Prevent the rest of the main app from loading
 }
 
-const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, nativeTheme, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -21,12 +21,14 @@ protocol.registerSchemesAsPrivileged([
 
 const USER_DATA = app.getPath('userData');
 const DOWNLOADS_DIR = path.join(USER_DATA, 'downloads');
+const COVERS_DIR = path.join(USER_DATA, 'covers');
 const DB_PATH = path.join(USER_DATA, 'db.json');
 if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+if (!fs.existsSync(COVERS_DIR)) fs.mkdirSync(COVERS_DIR, { recursive: true });
 
 function loadDB() {
   try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); }
-  catch { return { library: {}, progress: {}, history: { recent: [] }, settings: {} }; }
+  catch { return { library: {}, progress: {}, history: { recent: [] }, settings: {}, bookmarks: {} }; }
 }
 function saveDB(db) { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); }
 
@@ -152,16 +154,21 @@ ipcMain.handle('fetch-images-batch', async (event, urls, concurrency = 6) => {
   return results;
 });
 
+const activeDownloads = new Set();
+
 ipcMain.handle('download-chapter', async (event, mangaId, chapterId, chapterMeta, pageUrls) => {
   const dir = path.join(DOWNLOADS_DIR, mangaId, chapterId);
   await fsp.mkdir(dir, { recursive: true });
 
+  activeDownloads.add(chapterId);
   const pages = new Array(pageUrls.length).fill(null);
   let completed = 0;
+  let failed = 0;
   let urlIdx = 0;
 
   async function downloadWorker() {
     while (urlIdx < pageUrls.length) {
+      if (!activeDownloads.has(chapterId)) break;
       const i = urlIdx++;
       const url = pageUrls[i];
       const filePath = path.join(dir, `page_${String(i).padStart(3, '0')}.jpg`);
@@ -176,20 +183,27 @@ ipcMain.handle('download-chapter', async (event, mangaId, chapterId, chapterMeta
         }
         pages[i] = filePath;
       } catch (e) {
+        failed++;
         console.error(`Page ${i} download failed:`, e);
       } finally {
         completed++;
-        event.sender.send('download-progress', { chapterId, current: completed, total: pageUrls.length });
+        event.sender.send('download-progress', { chapterId, current: completed, total: pageUrls.length, failed });
       }
     }
   }
 
   const workers = Array.from({ length: Math.min(3, pageUrls.length) }, downloadWorker);
   await Promise.all(workers);
+  activeDownloads.delete(chapterId);
 
   const metaPath = path.join(dir, 'meta.json');
   await fsp.writeFile(metaPath, JSON.stringify({ ...chapterMeta, pages, downloadedAt: Date.now() }));
   return { success: true, pages, dir };
+});
+
+ipcMain.handle('cancel-download', (_, chapterId) => {
+  activeDownloads.delete(chapterId);
+  return true;
 });
 
 ipcMain.on('window-minimize', () => win?.minimize());
@@ -255,7 +269,7 @@ ipcMain.handle('open-downloads-folder', async () => {
 
 ipcMain.handle('db-get', async () => await loadDB());
 ipcMain.handle('db-save', async (_, db) => { await saveDB(db); return true; });
-ipcMain.handle('db-clear', async () => { saveDB({ library: {}, progress: {}, history: { recent: [] }, settings: {} }); return true; });
+ipcMain.handle('db-clear', async () => { saveDB({ library: {}, progress: {}, history: { recent: [] }, settings: {}, bookmarks: {} }); return true; });
 ipcMain.handle('settings-get', async () => loadDB().settings || {});
 ipcMain.handle('settings-save', async (_, settings) => {
   const db = loadDB();
@@ -377,6 +391,7 @@ async function importFromFolder(folderPath) {
   // - Else, treat root as single chapter.
   const chapterCandidates = subdirs.length > 0 ? subdirs : ['Chapter_1'];
 
+  let firstChapterPage = null;
   let chapterIdx = 0;
   for (const chapFolder of chapterCandidates) {
     const chapterLabel = chapFolder === 'Chapter_1' ? '1' : sanitizeSegment(chapFolder);
@@ -388,6 +403,7 @@ async function importFromFolder(folderPath) {
 
     // If chapter has no pages, skip.
     if (!pages.length) continue;
+    if (!firstChapterPage) firstChapterPage = pages[0];
 
     const meta = {
       chapter: chapterIdx + 1,
@@ -401,18 +417,30 @@ async function importFromFolder(folderPath) {
     chapterIdx++;
   }
 
+  let coverUrl = null;
+  if (firstChapterPage) {
+    const coverPath = path.join(COVERS_DIR, `${mangaId}.jpg`);
+    try {
+      const img = nativeImage.createFromPath(firstChapterPage);
+      const thumbnail = img.resize({ height: 450 });
+      await fsp.writeFile(coverPath, thumbnail.toJPEG(85));
+      coverUrl = `inkflow://local/${path.normalize(coverPath)}`;
+    } catch (e) {
+      console.error('Local cover generation failed:', e);
+    }
+  }
+
   // Create library entry
   const db = loadDB();
   if (!db.library) db.library = {};
-  if (!db.library[mangaId]) {
-    db.library[mangaId] = {
-      id: mangaId,
-      title: titleStr,
-      cover: null,
-      status: 'local',
-      addedAt: Date.now(),
-    };
-  }
+  db.library[mangaId] = {
+    ...(db.library[mangaId] || {}),
+    id: mangaId,
+    title: titleStr,
+    cover: coverUrl || (db.library[mangaId]?.cover || null),
+    status: 'local',
+    addedAt: db.library[mangaId]?.addedAt || Date.now(),
+  };
   // Ensure db.downloads is NOT used (renderer uses getDownloads from filesystem)
   saveDB(db);
 
@@ -687,15 +715,15 @@ app.whenReady().then(() => {
     }
     
     const normalizedPath = path.normalize(decodedPath);
-    const normalizedDownloads = path.normalize(DOWNLOADS_DIR);
-    const rel = path.relative(normalizedDownloads, normalizedPath);
-    const inside =
-      rel !== '' &&
-      !rel.startsWith('..' + path.sep) &&
-      rel !== '..' &&
-      !path.isAbsolute(rel);
+    const checkInside = (root) => {
+      const rel = path.relative(path.normalize(root), normalizedPath);
+      return rel !== '' &&
+        !rel.startsWith('..' + path.sep) &&
+        rel !== '..' &&
+        !path.isAbsolute(rel);
+    };
 
-    if (inside) {
+    if (checkInside(DOWNLOADS_DIR) || checkInside(COVERS_DIR)) {
       return net.fetch(pathToFileURL(normalizedPath).toString());
     }
     return new Response('Forbidden', { status: 403 });
